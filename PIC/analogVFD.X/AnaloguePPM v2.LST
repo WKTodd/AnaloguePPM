@@ -1,0 +1,2246 @@
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;**********************************************************************
+                      00002 ;                                                                     *
+                      00003 ;    Filename: VFD Main.asm                                           *
+                      00004 ;    Date:     17/09/1991 to 23/11/2020                         *
+                      00005 ;    File Version:      2.0                                           *
+                      00006 ;                                                                     *
+                      00007 ;    Author:             W.K.Todd                                     *
+                      00008 ;    Company:            Todd Electronics                                             *
+                      00009 ;                                                                     * 
+                      00010 ;                                                                     *
+                      00011 ;**********************************************************************
+                      00012 ;                                                                     *
+                      00013 ;    Files Required: P16F1572.INC                                     *
+                      00014 ;                                                                     *
+                      00015 ;**********************************************************************
+                      00016 
+                      00017 ;**********************************************************************
+                      00018 ; The display is multiplexed one frame at a time, by taking a grid
+                      00019 ; (or pair of grids) high (output 1) and the anodes low for off or high for on
+                      00020 ;
+                      00021 ; In order to ensure even brightness at the ends of the grids, the 
+                      00022 ; top and bottom anode segments are illuminated separately with
+                      00023 ; the two adjacent grids on.
+                      00024 ; 
+                      00025 ; A complete scan is made every 19 frames.
+                      00026 ; 
+                      00027 ;--------------------------------------------------------------------
+                      00028 
+                      00029 ; Many possible display modes are possible:
+                      00030 ; i) for a conventional bar - 0 at the bottom 100 at the top set 'bar on value' (bonvl & bonvr)
+                      00031 ;     and 'dot value' (DotVl & DotVr) to zero. Then change the Bar off values (BoffVl & BoffVr)
+                      00032 ;       
+                      00033 ; ii) for an inverted bar  - 0 at the top 100 at the bottom. Set 'bar off value' (boffvl & boffvr) to 10
+                            0
+                      00034 ;     and 'dot value' (DotVl & DotVr) to zero. Then change the Bar on values (BoffVl & BoffVr)
+                      00035 ;
+                      00036 ; iii) for trend meter with zero in the middle - For  values < 50 should set Bar on value 
+                      00037 ;      (with Boff fixed at 50) For values > 50  Bar off value should be set to 50 + value
+                      00038 
+                      00039 ; iv) for dot display simply set dot values (dotvl & dotvr)
+                      00040 
+                      00041 ; v) a centre line for the dot display can be set using Bar on and bar off set to 50
+                      00042 
+                      00043 ; vi) bar and dot modes can be combined to show level bar with peak dot
+                      00044 
+                      00045 ;  Plus many more :)
+                      00046 ;--------------------------------------------------------------------------------------------------
+                      00047 
+                      00048 
+                      00049 
+                      00050 ; PIC12F1572 Configuration Bit Settings
+                      00051 
+                      00052 ; ASM source line config statements
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00053 
+Error[105]  : Cannot open file (Include File "p12F1572.inc" not found)
+                      00054 #INCLUDE "p12F1572.inc"
+                      00055 
+                      00056 ; CONFIG1
+                      00057 ; __config 0xF9A4
+Error[113]  : Symbol not previously defined (_CONFIG1)
+Error[126]  : Argument out of range (not a valid config register address)
+Error[126]  : Argument out of range (not a valid config register address)
+                      00058  __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOREN_OFF & _CLKOUTE
+                            N_OFF
+                      00059 ; CONFIG2
+                      00060 ; __config 0xFFFF
+Error[113]  : Symbol not previously defined (_CONFIG2)
+Error[126]  : Argument out of range (not a valid config register address)
+Error[126]  : Argument out of range (not a valid config register address)
+                      00061  __CONFIG _CONFIG2, _WRT_OFF & _PLLEN_ON & _STVREN_ON & _BORV_LO & _LPBOREN_OFF & _LVP_OFF
+                      00062 
+                      00063 
+                      00064 ;***** VARIABLE DEFINITIONS
+                      00065 
+Error[113]  : Symbol not previously defined (PORTA)
+  00000000            00066 DISPORT         EQU             PORTA
+                      00067 ;Bit values for Display control outputs 
+Error[113]  : Symbol not previously defined (RA5)
+  00000000            00068 SDATA           EQU             RA5     ;use alt pin APFCON             
+Error[113]  : Symbol not previously defined (RA4)
+  00000000            00069 SCLK            EQU             RA4
+Error[113]  : Symbol not previously defined (RA2)
+  00000000            00070 LATCH           EQU             RA2
+                      00071 ;Analogue inputs 
+Error[113]  : Symbol not previously defined (RA0)
+  00000000            00072 LIN             EQU             RA0     ;Left analogue input
+Error[113]  : Symbol not previously defined (RA1)
+  00000000            00073 RIN             EQU             RA1     ;Right analogue input   
+Error[113]  : Symbol not previously defined (RA3)
+  00000000            00074 SWITCH          EQU             RA3     ;switch input
+                      00075 
+                      00076 ;BANK 0 RAM (80 bytes 0x20 - 0x6F)
+                      00077 ;five bytes are required to hold the 40 display bits 
+  00000020            00078 PB29            EQU             0X20            ;PB 9-2 
+  00000021            00079 PAB01           EQU             0X21            ;PA1b,PA1a,PB1b,Pb1a,PA0b,PA0b,PB0b,Pb0a
+  00000022            00080 PA29            EQU             0X22            ;PA 9-2
+  00000023            00081 GRD17           EQU             0X23            ;Grid 7 - 0 ,PAB00
+  00000024            00082 GRD810          EQU             0X24            ;LED 6-10, Grid 10 - 8
+                      00083 
+                      00084 
+                      00085 ;bit value for the GRD810 display byte
+  00000007            00086 IND1            EQU             7                       ;Aux LED1 (GRD810.7)
+  00000006            00087 IND2            EQU             6                       ;Aux LED2 (GRD810.6)
+  00000005            00088 IND3            EQU             5                       ;Aux LED3 (GRD810.5)
+  00000004            00089 IND4            EQU             4                       ;Aux LED4 (GRD810.4)
+  00000003            00090 IND5            EQU             3                       ;Aux LED5 (GRD810.3)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000000            00091 PAB00           EQU             0                       ;Bottom pair of segments (Grd17.0)
+                      00092                 
+                      00093 ;bytes used by display routine to keep place
+  00000025            00094 FRMNO           EQU             0X25            ;Bits 0-5 Current frame number [0=bottom 19=top], bit6-7
+  00000026            00095 ANVAL           EQU             0X26            ;Current anode value [1-100]
+  00000000            00096 ABBAFG          EQU             0                       ;flag to determine if this pair is ab or ba
+                      00097 
+  00000007            00098 PA1B            EQU             7                       ;anode bits
+  00000006            00099 PA1A            EQU             6
+  00000005            00100 PB1B            EQU             5
+  00000004            00101 PB1A            EQU             4
+  00000003            00102 PA0B            EQU             3
+  00000002            00103 PA0A            EQU             2
+  00000001            00104 PB0B            EQU             1
+  00000000            00105 PB0A            EQU             0
+                      00106 
+                      00107 ;values for bar and dot display 0-100 [0=off, 1= bottom, 100= top]
+                      00108 ;set these bytes from your code to light display
+  00000027            00109 BONVL           EQU             0X27            ;Bar on value left
+  00000028            00110 BOFFVL          EQU             0X28            ;Bar off value left
+  00000029            00111 BONVR           EQU             0X29            ;Bar on value right
+  0000002A            00112 BOFFVR          EQU             0X2A            ;Bar off value right
+  0000002B            00113 DOTVL           EQU             0X2B            ;Dot on value left
+  0000002C            00114 DOTVR           EQU             0X2C            ;Dot on value right     
+  0000002D            00115 AUXIND          EQU             0X2D            ;Aux indicators and PAB00
+  0000002E            00116 REFVL           EQU             0X2E            ;Ref Dot left (dimmed)  
+  0000002F            00117 REFVR           EQU             0X2F            ;Ref Dot Right (dimmed)
+                      00118 
+                      00119 ;demo control variables
+  00000030            00120 DECCNT          EQU             0X30            ;decay rate counter
+  00000031            00121 MODE            EQU             0X31            ;display mode           
+  00000032            00122 REFCNT          EQU             0X32            ;Ref bar Dimmer control counter
+  00000033            00123 PKHTMR          EQU             0X33            ;peak hold timer (dec at field rate)
+  00000034            00124 HMSEC           EQU             0X34            ;Hundred millisecond counter (incremented @ 10Hz)
+  00000035            00125 FRMCNT          EQU             0X35            ;frame count for half sec timer 
+  00000036            00126 SWTDBV          EQU             0X36            ;switch debounce etc.           
+  00000037            00127 SWTDBT          EQU             0X37            
+                      00128         
+                      00129 ;PPM prefs 16 bytes 0x40-0x4F (saved to Flash @ 0x780-0x78F as RETLW 0xXX )
+  00000040            00130 PREFS           EQU             0X40            
+  00000040            00131 PKHOPT          EQU             0X40            ;Peak Hold Option off,1s,3s,hold 
+  00000041            00132 DECOPT          EQU             0X41            ;Decay rate  opt slo2,med,med,high
+  00000042            00133 REFLVL          EQU             0X42            ;Reference level
+                      00134                 
+                      00135 ;BANK 1 RAM (80 bytes - FSR 0xA0H - 0xEF)       
+                      00136 ;ADC input values  (2'sComp) etc.       
+  00000020            00137 ALINH           EQU             0X20    ;analogue left in high byte
+  00000021            00138 ALINL           EQU             0X21    ;low byte
+  00000022            00139 ARINH           EQU             0X22    ;analogue Right in low byte
+  00000023            00140 ARINL           EQU             0X23    ;low byte
+                      00141                 
+  00000024            00142 PLINH           EQU             0X24    ;Peak left in high byte bits 8-1 (no sign bit)
+  00000025            00143 PLINL           EQU             0X25    ;low byte (bit 0)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000026            00144 PRINH           EQU             0X26    ;Peak Right in low byte
+  00000027            00145 PRINL           EQU             0X27    ;low byte
+                      00146         
+                      00147                 
+  0000002F            00148 PTEMP           EQU             0X2F    ;temp store for peak
+                      00149                 
+  00000030            00150 DCFTL0          EQU             0X30    ;Dc filter array Left
+  00000031            00151 DCFTL1          EQU             0X31    ;
+  00000032            00152 DCFTL2          EQU             0X32    ;
+  00000033            00153 DFCNTL          EQU             0X33    ; loop counter
+                      00154                 
+  00000034            00155 DCFTR0          EQU             0X34    ;Dc filter array right
+  00000035            00156 DCFTR1          EQU             0X35    ; 
+  00000036            00157 DCFTR2          EQU             0X36    ;
+  00000037            00158 DFCNTR          EQU             0X37    ; loop counter
+                      00159                 
+  00000038            00160 DCOSL           EQU             0X38    ;dc offset value
+  00000039            00161 DCOSR           EQU             0X39    
+                      00162                 
+                      00163 ;Common RAM (16 bytes   0x70 - 0x7F)            
+  00000070            00164 TEMP0           EQU             0X70            ;temp bytes for normal routines
+  00000071            00165 TEMP1           EQU             0X71
+  00000072            00166 INTEMP0         EQU             0X72            ;temp bytes for interrupt routines
+  00000073            00167 INTEMP1         EQU             0X73
+  00000074            00168 FRMTMR          EQU             0X74            ;frame timer (decremented by TO int) 
+                      00169                 
+  0000007F            00170 CONTROL         EQU             0X7F            ;control bits
+                      00171 ;Control bits
+  00000000            00172 RAMPDWN         EQU             0               ;count up/dwn flag
+  00000001            00173 SWTMODE         EQU             1               ;mode switch debounce bit
+  00000002            00174 SWTSP           EQU             2               ;short press switch
+  00000003            00175 SWTLP           EQU             3               ;long press switch
+                      00176                 
+  00000006            00177 ADCCH           EQU             6               ;analogue input 0=right 1=left
+  00000007            00178 REFEN           EQU             7               ;display flag for ref marker dimmer
+                      00179 
+                      00180 
+                      00181 ;**********************************************************************
+0000                  00182             ORG     0X000             ; processor reset vector
+                      00183 
+0000   2878           00184             GOTO    MAIN              ; go to beginning of program
+                      00185 
+                      00186 
+0004                  00187             ORG     0X004             ; interrupt vector location
+                      00188 ; isr code can go here or be located as a call subroutine elsewhere
+0004                  00189 ADINT:
+Error[113]  : Symbol not previously defined (PIR1)
+0004   0020           00190             BANKSEL     PIR1    
+Error[113]  : Symbol not previously defined (PIR1)
+Error[113]  : Symbol not previously defined (ADIF)
+0005   1C00           00191             BTFSS       PIR1,ADIF       ; test ADC interupt
+0006   322B           00192             BRA         INTT0
+Error[113]  : Symbol not previously defined (PIR1)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (ADIF)
+0007   1000           00193             BCF         PIR1,ADIF       ;clear interrupt
+                      00194             
+Error[113]  : Symbol not previously defined (ADCON0)
+0008   0020           00195             BANKSEL     ADCON0          ;bank1
+0009   3005           00196             MOVLW       B'00000101'         
+000A   1F7F           00197             BTFSS       CONTROL,ADCCH   ;0=right 1=left
+000B   3001           00198             MOVLW       B'00000001'
+Error[113]  : Symbol not previously defined (ADCON0)
+000C   0080           00199             MOVWF       ADCON0          ;select other channel (start Tacq)
+                      00200 
+000D   3080           00201             MOVLW       0X80            ;save channel value as twos compliment
+Error[113]  : Symbol not previously defined (ADRESH)
+000E   0600           00202             XORWF       ADRESH,W        ;get high byte and compliment   
+                      00203             
+000F   1B7F           00204             BTFSC       CONTROL,ADCCH   ;test channel and toggle
+0010   3211           00205             BRA         SAVELCH
+0011   177F           00206             BSF         CONTROL,ADCCH   ;toggle input to left ch
+                      00207 ;save  Right channel and test peak
+0012   00A2           00208             MOVWF       ARINH           ;save left channel bits 9-2
+                      00209            
+Error[113]  : Symbol not previously defined (ADRESL)
+0013   0800           00210             MOVF        ADRESL,W        ;save lower two bits 1-0
+0014   00A3           00211             MOVWF       ARINL
+0015   3523           00212             LSLF        ARINL,W         ;get bit 1 into carry
+0016   0D22           00213             RLF         ARINH,W         ;get sign bit (9) into carry and 8-1 into w
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0017   1C00           00214             BTFSS       STATUS,C        ;test sign bit
+0018   3202           00215             BRA         POSRIGHT
+0019   3AFF           00216             XORLW       0XFF            ;rectify
+001A   3E01           00217             ADDLW       0X01            ;add 1 so -1 = 1
+001B   00AF           00218 POSRIGHT    MOVWF       PTEMP           ;save for later
+001C   0226           00219             SUBWF       PRINH,W         ;compare with Peak value
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+001D   1800           00220             BTFSC       STATUS,C        
+001E   3213           00221             BRA         XITPR           ;Input < Peak we're done
+                      00222 
+                      00223             
+001F                  00224 NEWPR       ;movf       DCOSR,w
+                      00225             ;subwf      Ptemp,w
+001F   082F           00226             MOVF        PTEMP,W
+0020   00A6           00227             MOVWF       PRINH           ;save new peak              
+                      00228 
+                      00229             
+0021   3210           00230             BRA         XITPR
+                      00231             
+                      00232             
+0022   137F           00233 SAVELCH     BCF         CONTROL,ADCCH   ;toggle channel to right ch
+0023   00A0           00234             MOVWF       ALINH           ;save left channel
+Error[113]  : Symbol not previously defined (ADRESL)
+0024   0800           00235             MOVF        ADRESL,W
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0025   00A1           00236             MOVWF       ALINL
+                      00237             
+0026   3521           00238             LSLF        ALINL,W         ;get bit 1 into carry
+0027   0D20           00239             RLF         ALINH,W         ;get sign bit (9) into carry and 8-1 into w
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0028   1C00           00240             BTFSS       STATUS,C        ;test sign bit
+0029   3202           00241             BRA         POSLEFT
+002A   3AFF           00242             XORLW       0XFF            ;rectify
+002B   3E01           00243             ADDLW       0X01
+002C   00AF           00244 POSLEFT     MOVWF       PTEMP
+002D   0224           00245             SUBWF       PLINH,W         ;compare with Peak value
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+002E   1800           00246             BTFSC       STATUS,C        
+002F   3202           00247             BRA         XITPL           ;Input < Peak we're done
+                      00248 
+                      00249             
+0030                  00250 NEWPL       ;movf       DCOSL,w
+                      00251             ;subwf      Ptemp,w
+0030   082F           00252             MOVF        PTEMP,W
+0031   00A4           00253             MOVWF       PLINH           ;save new peak 
+                      00254 
+0032                  00255 XITPL
+0032                  00256 XITPR       ;
+                      00257             
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (T0IF)
+0032   1C00           00258 INTT0:      BTFSS       INTCON,T0IF         ;test timer 0 interrupt     
+0033   3207           00259             BRA         INTXIT
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (T0IF)
+0034   1000           00260             BCF         INTCON,T0IF         ;clear the interrupt flag
+0035   03F4           00261             DECF        FRMTMR,F            ;clock frame timer
+                      00262             ;call       setTimer
+Error[113]  : Symbol not previously defined (TMR0)
+0036   0020           00263             BANKSEL     TMR0
+0037   3077           00264             MOVLW       .255 - (.8*.17)         ;osc/4 17us 
+Error[113]  : Symbol not previously defined (TMR0)
+0038   0080           00265             MOVWF       TMR0    ;set timer      
+0039   0021           00266             MOVLB       0X01
+Error[113]  : Symbol not previously defined (ADCON0)
+Error[113]  : Symbol not previously defined (ADGO)
+003A   1400           00267             BSF         ADCON0,ADGO     ;start new ADC process
+003B   0009           00268 INTXIT      RETFIE                    ; return from interrupt
+                      00269 
+                      00270 ;==========================================< Tables >=======================================
+                      00271 ;------Anode value table
+                      00272 ;This holds the initial value for the anodes in the current frame (faster than multiplying on the fly) 
+003C   000B           00273 ANVTAB      BRW
+003D   3401           00274             RETLW       .1              ;G1             1-9
+003E   340A           00275             RETLW       .10             ;G2-1   10,11
+003F   340C           00276             RETLW       .12             ;G2             12-19
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0040   3414           00277             RETLW       .20             ;G3-2   20,21
+0041   3416           00278             RETLW       .22             ;G3             22-29
+0042   341E           00279             RETLW       .30             ;G4-3   30,31
+0043   3420           00280             RETLW       .32             ;G4
+0044   3428           00281             RETLW       .40             ;G4-5
+0045   342A           00282             RETLW       .42             ;G5
+0046   3432           00283             RETLW       .50             ;G5-6
+0047   3434           00284             RETLW       .52             ;G6
+0048   343C           00285             RETLW       .60             ;G6-7
+0049   343E           00286             RETLW       .62             ;G7
+004A   3446           00287             RETLW       .70             ;G7-8
+004B   3448           00288             RETLW       .72             ;G8
+004C   3450           00289             RETLW       .80             ;G8-9
+004D   3452           00290             RETLW       .82             ;G9
+004E   345A           00291             RETLW       .90             ;G9-10
+004F   345C           00292             RETLW       .92             ;G10
+                      00293 
+                      00294 ;------Grid tables------
+                      00295 ; These hold the grid setup value for each frame (high and low bytes).
+                      00296 ;GrdTabL bit 0 indicates an ab or ba frame pair
+                      00297  
+0050   000B           00298 GRDTABL     BRW
+0051   3402           00299             RETLW       0X02    ;G1
+0052   3407           00300             RETLW       0X07    ;G2-1 AB
+0053   3404           00301             RETLW       0X04    ;G2
+0054   340C           00302             RETLW       0X0C    ;G3-2 BA
+0055   3408           00303             RETLW       0X08    ;G3
+0056   3419           00304             RETLW       0X19    ;G4-3 AB
+0057   3410           00305             RETLW       0X10    ;G4
+0058   3430           00306             RETLW       0X30    ;G4-5 BA
+0059   3420           00307             RETLW       0X20    ;G5
+005A   3461           00308             RETLW       0X61    ;G5-6 AB
+005B   3440           00309             RETLW       0X40    ;G6
+005C   34C0           00310             RETLW       0XC0    ;G6-7 BA
+005D   3480           00311             RETLW       0X80    ;G7
+005E   3481           00312             RETLW       0X81    ;G7-8 AB
+005F   3400           00313             RETLW       0X00    ;G8
+0060   3400           00314             RETLW       0X00    ;G8-9 BA
+0061   3400           00315             RETLW       0X00    ;G9
+0062   3401           00316             RETLW       0X01    ;G9-10 AB
+0063   3400           00317             RETLW       0X00    ;G10
+                      00318         
+0064   000B           00319 GRDTABH     BRW
+0065   3400           00320             RETLW       0X00    ;G1
+0066   3400           00321             RETLW       0X00    ;G2-1
+0067   3400           00322             RETLW       0X00    ;G2
+0068   3400           00323             RETLW       0X00    ;G3-2
+0069   3400           00324             RETLW       0X00    ;G3
+006A   3400           00325             RETLW       0X00    ;G4-3
+006B   3400           00326             RETLW       0X00    ;G4
+006C   3400           00327             RETLW       0X00    ;G4-5
+006D   3400           00328             RETLW       0X00    ;G5
+006E   3400           00329             RETLW       0X00    ;G5-6
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+006F   3400           00330             RETLW       0X00    ;G6
+0070   3400           00331             RETLW       0X00    ;G6-7
+0071   3400           00332             RETLW       0X00    ;G7
+0072   3401           00333             RETLW       0X01    ;G7-8
+0073   3401           00334             RETLW       0X01    ;G8
+0074   3403           00335             RETLW       0X03    ;G8-9
+0075   3402           00336             RETLW       0X02    ;G9
+0076   3406           00337             RETLW       0X06    ;G9-10
+0077   3404           00338             RETLW       0X04    ;G10
+                      00339 
+                      00340 ;-----------------------------------------< end of tables >-----------------------------------
+                      00341 
+                      00342 
+                      00343 ;=======================================< Start of main code >===============================
+0078                  00344 MAIN:
+                      00345 ;start
+                      00346             ;initialise clock
+Error[113]  : Symbol not previously defined (OSCCON)
+0078   0020           00347             BANKSEL     OSCCON          ;BANK 1
+0079   30F0           00348             MOVLW       B'11110000' ;32Mhz clock
+                      00349             ;movlw      B'01111010' ;16Mhz clock
+                      00350             ;movlw      B'01110010' ;8Mhz clock
+                      00351             ;movlw      B'01101010' ;4Mhz clock
+Error[113]  : Symbol not previously defined (OSCCON)
+007A   0080           00352             MOVWF       OSCCON
+                      00353             
+                      00354             ;initialise analogue ports
+Error[113]  : Symbol not previously defined (FVRCON)
+007B   0020           00355             BANKSEL     FVRCON          ;BANK 2
+                      00356             
+                      00357             ;movlw      B'10000011'     ;FVR for ADC ref set to 4.096v
+007C   3082           00358             MOVLW       B'10000010'     ;FVR for ADC ref set to 2.048v
+                      00359             ;movlw      B'10000001'     ;FVR for ADC ref set to 1.024v
+Error[113]  : Symbol not previously defined (FVRCON)
+007D   0080           00360             MOVWF       FVRCON
+                      00361             
+Error[113]  : Symbol not previously defined (ANSELA)
+007E   0020           00362             BANKSEL     ANSELA          ;select bank 3
+007F   3003           00363             MOVLW       B'00000011' 
+Error[113]  : Symbol not previously defined (ANSELA)
+0080   0080           00364             MOVWF       ANSELA          ;RA0 & RA1 analogue input           
+                      00365             
+Error[113]  : Symbol not previously defined (ADCON0)
+0081   0020           00366             BANKSEL     ADCON0          ;BANK 1
+0082   3001           00367             MOVLW       B'00000001'     ;enable ADC
+Error[113]  : Symbol not previously defined (ADCON0)
+0083   0080           00368             MOVWF       ADCON0
+                      00369             
+                      00370             ;banksel    ADCON1          ;BANK 1
+0084   3053           00371             MOVLW       B'01010011'     ;left justify, Fosc/32, Vrpos = FVR
+Error[113]  : Symbol not previously defined (ADCON1)
+0085   0080           00372             MOVWF       ADCON1
+                      00373             
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00374             ;banksel    ADCON2          ;BANK 1
+0086   3000           00375             MOVLW       B'00000000'     ;No auto triggers
+Error[113]  : Symbol not previously defined (ADCON2)
+0087   0080           00376             MOVWF       ADCON2
+                      00377             
+                      00378             ;initialise O/P pins
+                      00379             ;banksel    TrisA           ;BANK 1
+0088   300B           00380             MOVLW       B'00001011'     ;RA0 & RA1 & RA3 inputs
+Error[113]  : Symbol not previously defined (TRISA)
+0089   0080           00381             MOVWF       TRISA           ;port A i/o set
+                      00382             
+                      00383             ;initislise EUSART
+008A   22E8           00384             CALL        INITUART 
+                      00385 
+                      00386             ;initialise timer
+Error[113]  : Symbol not previously defined (OPTION_REG)
+008B   0020           00387             BANKSEL     OPTION_REG
+008C   3088           00388             MOVLW       B'10001000'     ;Timer0 no prescale osc/4, WPU off
+Error[113]  : Symbol not previously defined (OPTION_REG)
+008D   0080           00389             MOVWF       OPTION_REG
+008E   21EB           00390             CALL        SETTIMER                
+                      00391             
+                      00392 
+                      00393             ;initialise interrupts
+008F   30E0           00394             MOVLW       B'11100000'     ;enable TOIE - disable interrupt if calling dofrm from mainloop
+                      00395             ;movlw      B'11000000'     ;enable peripheral interrupts (ADC)
+Error[113]  : Symbol not previously defined (INTCON)
+0090   0080           00396             MOVWF       INTCON
+                      00397             
+Error[113]  : Symbol not previously defined (PIE1)
+0091   0020           00398             BANKSEL     PIE1            ;bank 1
+0092   3040           00399             MOVLW       B'01000000'     ;enable ADC interupt
+Error[113]  : Symbol not previously defined (PIE1)
+0093   0080           00400             MOVWF       PIE1
+                      00401             
+0094   01A4           00402             CLRF        PLINH
+0095   01A5           00403             CLRF        PLINL  
+0096   01A6           00404             CLRF        PRINH
+0097   01A7           00405             CLRF        PRINL
+                      00406             
+Error[113]  : Symbol not previously defined (ADCON0)
+Error[113]  : Symbol not previously defined (ADGO)
+0098   1400           00407             BSF         ADCON0,ADGO     ;start converter
+                      00408             
+0099   0020           00409             BANKSEL     0
+                      00410 
+                      00411             ;clear variables
+009A   20E8           00412             CALL        CLRALL
+009B   01B1           00413             CLRF        MODE
+009C   01FF           00414             CLRF        CONTROL
+                      00415             ;movlw      .2
+009D   2780           00416             CALL        FPRTAB
+009E   00C0           00417             MOVWF       PKHOPT      ;set default peak hold time
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+009F   01B3           00418             CLRF        PKHTMR
+00A0   01B4           00419             CLRF        HMSEC
+                      00420             ;movlw      .2          ;deacy option 2 medium-slow
+00A1   2781           00421             CALL        FPRTAB+1
+00A2   00C1           00422             MOVWF       DECOPT      ;set default decay rate
+                      00423             ;movlw      .75         ;set default reference level marker (0dB)
+00A3   2782           00424             CALL        FPRTAB+2
+00A4   00C2           00425             MOVWF       REFLVL
+                      00426 ;==================================< main loop >===================================
+                      00427 ;
+00A5   20AD           00428 MAINLP:     CALL        DOFRMSLOT       ;do one frame slot 
+00A6   21EF           00429             CALL        DOFRM           ;do next frame
+00A7   1FF4           00430 SYNCLP      BTFSS       FRMTMR,7        ;check for timer roll over
+00A8   33FE           00431             BRA         SYNCLP
+00A9   3014           00432             MOVLW       .20
+00AA   00F4           00433             MOVWF       FRMTMR
+00AB   22F6           00434             CALL        SHFTOUT
+00AC   28A5           00435             GOTO        MAINLP
+                      00436 ;--------------------------------------------------------------------------------
+                      00437 
+00AD   0825           00438 DOFRMSLOT:  MOVF        FRMNO,W     ;do one of 19x 250uS slots between frames
+00AE   000B           00439             BRW
+00AF   29E5           00440             GOTO        DOHMSC          ;0 do 100mS counter
+00B0   28C2           00441             GOTO        DOMODE          ;1 do display mode
+00B1   2973           00442             GOTO        DODECAY         ;2
+00B2   299E           00443             GOTO        CLRPEAK         ;3  
+00B3   0008           00444             RETURN                      ;4
+00B4   0008           00445             RETURN                      ;5
+00B5   0008           00446             RETURN                      ;7
+00B6   0008           00447             RETURN                      ;8          
+00B7   0008           00448             RETURN  ;goto       DcFltL  ;9 do dc filter average
+00B8   0008           00449             RETURN  ;goto       DcFltR  ;10 do dc filter average
+00B9   0008           00450             RETURN                      ;11
+00BA   0008           00451             RETURN                      ;12         
+00BB   0008           00452             RETURN                      ;13
+00BC   0008           00453             RETURN                      ;14         
+00BD   0008           00454             RETURN                      ;15         
+00BE   0008           00455             RETURN                      ;16
+00BF   0008           00456             RETURN                      ;17         
+00C0   0008           00457             RETURN                      ;18
+00C1   28CE           00458             GOTO        DOSWITCH        ;19 do switch routine
+                      00459             
+00C2   0831           00460 DOMODE:     MOVF        MODE,W
+00C3   3907           00461             ANDLW       0X07
+00C4   000B           00462             BRW
+00C5   290C           00463             GOTO        PEAKBAR         ;mode 0 - peakbar
+00C6   2950           00464             GOTO        SETDECAY        ;mode 1 - set decay rate
+00C7   2985           00465             GOTO        SETPKCL         ;mode 2 - set peak hold times
+00C8   28F5           00466             GOTO        CENTREDOT       ;mode 3 - DC adjust
+00C9   2B07           00467             GOTO        PRFSAVE         ;mode 4 - save prefs
+00CA   01B1           00468             CLRF        MODE            ;mode 5 - reset mode to 0 
+00CB   01B1           00469             CLRF        MODE            ;mode 6 - reset mode to 0
+00CC   01B1           00470 RSMODE      CLRF        MODE            ;mode 7 - reset mode to 0
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00CD   0008           00471             RETURN
+                      00472             
+                      00473 ;do switch routines
+00CE                  00474 DOSWITCH:   
+Error[113]  : Symbol not previously defined (PORTA)
+00CE   1C00           00475             BTFSS       PORTA,SWITCH
+00CF   3206           00476             BRA         DOPRESS
+00D0   0BB7           00477             DECFSZ      SWTDBT,F
+00D1   0008           00478             RETURN
+00D2   18FF           00479             BTFSC       CONTROL,SWTMODE
+00D3   157F           00480             BSF         CONTROL,SWTSP       ;set short press on release of key
+00D4   10FF           00481             BCF         CONTROL,SWTMODE     ;clear mode switch bit
+00D5   0008           00482             RETURN
+                      00483             
+00D6                  00484 DOPRESS    
+00D6   18FF           00485             BTFSC       CONTROL,SWTMODE
+00D7   3207           00486             BRA         DOHLD
+00D8   3010           00487             MOVLW       .16
+00D9   00B7           00488             MOVWF       SWTDBT
+00DA   14FF           00489             BSF         CONTROL,SWTMODE     ;set mode switch bit
+00DB   0834           00490             MOVF        HMSEC,W             ;get 100mS timer value
+00DC   3E14           00491             ADDLW       .20                 ;add 3seconds
+00DD   00B6           00492             MOVWF       SWTDBV              ;save timer
+                      00493             ;bsf                Control,SwtSP       ;set short press flag (cleared by routine)
+00DE   0008           00494             RETURN
+                      00495 
+00DF   0836           00496 DOHLD       MOVF        SWTDBV,W
+00E0   0634           00497             XORWF       HMSEC,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+00E1   1C00           00498             BTFSS       STATUS,Z        ;test if halfsecv = swtdbv 
+00E2   0008           00499             RETURN
+                      00500             ;long press routine here
+00E3   0834           00501             MOVF        HMSEC,W             ;get 100mS timer value
+00E4   3E14           00502             ADDLW       .20                 ;add 3seconds
+00E5   00B6           00503             MOVWF       SWTDBV              ;save timer
+00E6   15FF           00504             BSF         CONTROL,SWTLP
+00E7   0008           00505             RETURN
+                      00506             
+                      00507 ;dot displays 
+00E8                  00508 CLRALL:     
+00E8   0020           00509             MOVLB       0
+00E9   01AE           00510             CLRF        REFVL
+00EA   01AF           00511             CLRF        REFVR
+00EB   01AD           00512             CLRF        AUXIND
+00EC   13AD           00513 CLRDABS     BCF         AUXIND,IND1             ;clear dots and bars
+00ED   132D           00514             BCF         AUXIND,IND2
+00EE   01AB           00515             CLRF        DOTVL       
+00EF   01AC           00516             CLRF        DOTVR
+00F0   01A7           00517 CLRBARS     CLRF        BONVL
+00F1   01A9           00518             CLRF        BONVR
+00F2   01A8           00519             CLRF        BOFFVL
+00F3   01AA           00520             CLRF        BOFFVR
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00F4   0008           00521             RETURN
+                      00522             
+                      00523             
+00F5                  00524 CENTREDOT:  
+00F5   20E8           00525             CALL        CLRALL
+00F6   102D           00526             BCF         AUXIND,PAB00    ;bottom segments off
+00F7   3032           00527             MOVLW       .50
+00F8   00AE           00528             MOVWF       REFVL
+00F9   00AF           00529             MOVWF       REFVR       
+                      00530 
+00FA   0021           00531             MOVLB       1           
+00FB   0820           00532             MOVF        ALINH,W
+00FC   0020           00533             MOVLB       0
+00FD   3E32           00534             ADDLW       .50
+00FE   00AB           00535             MOVWF       DOTVL
+                      00536             
+00FF   0021           00537             MOVLB       1
+0100   0822           00538             MOVF        ARINH,W     
+0101   0020           00539             MOVLB       0
+0102   3E32           00540             ADDLW       .50
+0103   00AC           00541             MOVWF       DOTVR   
+0104   1DFF           00542             BTFSS       CONTROL,SWTLP
+0105   0008           00543             RETURN
+0106   11FF           00544             BCF         CONTROL,SWTLP
+0107   117F           00545             BCF         CONTROL,SWTSP
+0108   0AB1           00546             INCF        MODE,F
+0109   0008           00547             RETURN
+                      00548 
+                      00549 
+                      00550             ;analogue peak linear bar
+010A   21AF           00551 MANPKCLR    CALL        MANCLR          ;manual clear peak
+010B   117F           00552             BCF         CONTROL,SWTSP   ;clear button flag
+                      00553             
+010C   197F           00554 PEAKBAR:    BTFSC       CONTROL,SWTSP
+010D   33FC           00555             BRA         MANPKCLR
+010E   1DFF           00556             BTFSS       CONTROL,SWTLP
+010F   3203           00557             BRA         DISPPB
+0110   0AB1           00558             INCF        MODE,F
+0111   11FF           00559             BCF         CONTROL,SWTLP
+0112   0008           00560             RETURN
+                      00561             
+0113   01A7           00562 DISPPB      CLRF        BONVL
+0114   01A9           00563             CLRF        BONVR
+0115   0842           00564             MOVF        REFLVL,W        ;0dB marker for current scale
+0116   00AE           00565             MOVWF       REFVL
+0117   00AF           00566             MOVWF       REFVR
+0118   142D           00567             BSF         AUXIND,PAB00    ;bottom segments on
+                      00568 
+                      00569 
+                      00570 
+0119                  00571 PKLEFT      
+0119   0021           00572             MOVLB       1               ;bank 1
+011A   0824           00573             MOVF        PLINH,W         ;get current peak
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+011B   3CDF           00574             SUBLW       FSD
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+011C   1C00           00575             BTFSS       STATUS,C
+011D   3210           00576             BRA         OVERL
+011E   0824           00577             MOVF        PLINH,W         ;get current peak
+011F   01A4           00578             CLRF        PLINH           ;and clear
+0120   0020           00579             MOVLB       0
+0121   2400           00580             CALL        SCALETAB        ;scale in w 
+0122   00F1           00581             MOVWF       TEMP1           ;save for later
+0123   0228           00582             SUBWF       BOFFVL,W        ;compare with current peak
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0124   1800           00583             BTFSC       STATUS,C
+0125   320E           00584             BRA         PKRIGHT
+0126   0871           00585             MOVF        TEMP1,W         ;get scale value
+0127   00A8           00586             MOVWF       BOFFVL          ;set new peak
+0128   022B           00587             SUBWF       DOTVL,W         ;compare with current peak
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0129   1800           00588             BTFSC       STATUS,C
+012A   3209           00589             BRA         PKRIGHT
+                      00590             
+                      00591 
+012B   0828           00592             MOVF        BOFFVL,W
+012C   00AB           00593             MOVWF       DOTVL           ;set peak dot
+012D   3206           00594             BRA         PKRIGHT
+                      00595             
+                      00596             
+012E   01A4           00597 OVERL       CLRF        PLINH           ;and clear
+012F   0020           00598             MOVLB       0 
+0130   17AD           00599             BSF         AUXIND,IND1
+0131   3064           00600             MOVLW       .100
+0132   00A8           00601             MOVWF       BOFFVL
+0133   00AB           00602             MOVWF       DOTVL
+                      00603          
+                      00604 
+                      00605             
+0134                  00606 PKRIGHT     
+0134   0021           00607             MOVLB       1               ;bank 1
+0135   0826           00608             MOVF        PRINH,W         ;get current peak
+0136   3CDF           00609             SUBLW       FSD
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0137   1C00           00610             BTFSS       STATUS,C
+0138   3210           00611             BRA         OVERR
+0139   0826           00612             MOVF        PRINH,W         ;get current peak
+013A   01A6           00613             CLRF        PRINH           ;and clear
+013B   0020           00614             MOVLB       0
+013C   2400           00615             CALL        SCALETAB        ;scale in w 
+013D   00F1           00616             MOVWF       TEMP1           ;and save in Temp1
+013E   022A           00617             SUBWF       BOFFVR,W        ;compare with current peak
+Error[113]  : Symbol not previously defined (STATUS)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (C)
+013F   1800           00618             BTFSC       STATUS,C
+0140   0008           00619             RETURN
+0141   0871           00620             MOVF        TEMP1,W         ;get scale value
+0142   00AA           00621             MOVWF       BOFFVR          ;set new peak
+                      00622 
+0143   022C           00623             SUBWF       DOTVR,W         ;compare with current peak
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0144   1800           00624             BTFSC       STATUS,C
+0145   0008           00625             RETURN
+                      00626             
+                      00627 
+0146   082A           00628             MOVF        BOFFVR,W        
+0147   00AC           00629             MOVWF       DOTVR           ;set new peak                   
+0148   0008           00630             RETURN
+                      00631             
+0149   01A6           00632 OVERR       CLRF        PRINH           ;and clear
+014A   0020           00633             MOVLB       0
+014B   172D           00634             BSF         AUXIND,IND2
+014C   3064           00635             MOVLW       .100
+014D   00AA           00636             MOVWF       BOFFVR
+014E   00AC           00637             MOVWF       DOTVR
+014F   0008           00638             RETURN
+                      00639 
+0150                  00640 SETDECAY:   ;set decay speed mode  
+0150   102D           00641             BCF         AUXIND,PAB00    ;bottom segments off 
+0151   01AE           00642             CLRF        REFVL
+0152   01AF           00643             CLRF        REFVR           ;ref dots off
+0153   01AB           00644             CLRF        DOTVL
+0154   01AC           00645             CLRF        DOTVR
+0155   3041           00646             MOVLW       .65             ;pulse value 
+0156   08A8           00647             MOVF        BOFFVL,F        ;test boffvl
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0157   1800           00648             BTFSC       STATUS,Z
+0158   00A8           00649             MOVWF       BOFFVL
+0159   0841           00650             MOVF        DECOPT,W        ;get decay speed option 0-3
+015A   2168           00651             CALL        DISOPT          ;set right bar to display option
+015B   1D7F           00652             BTFSS       CONTROL,SWTSP
+015C   3205           00653             BRA         TSTSLP
+015D   117F           00654             BCF         CONTROL,SWTSP   ;do next option
+015E   0AC1           00655             INCF        DECOPT,F
+015F   0841           00656             MOVF        DECOPT,W
+0160   3903           00657             ANDLW       0X03
+0161   00C1           00658             MOVWF       DECOPT      
+0162   1DFF           00659 TSTSLP      BTFSS       CONTROL,SWTLP
+0163   0008           00660             RETURN
+0164   11FF           00661             BCF         CONTROL,SWTLP
+0165   117F           00662             BCF         CONTROL,SWTSP
+0166   0AB1           00663             INCF        MODE,F
+0167   0008           00664             RETURN
+                      00665 
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00666             
+0168                  00667 DISOPT:     ;display option on right bar
+0168   3903           00668             ANDLW       0X03
+0169   216E           00669             CALL        OBTAB
+016A   00A9           00670             MOVWF       BONVR
+016B   3E19           00671             ADDLW       .25
+016C   00AA           00672             MOVWF       BOFFVR
+016D   0008           00673             RETURN    
+                      00674             
+016E   000B           00675 OBTAB       BRW
+016F   3401           00676             RETLW       .1      ;opt bar at bottom
+0170   3419           00677             RETLW       .25
+0171   3432           00678             RETLW       .50
+0172   344B           00679             RETLW       .75
+                      00680             
+0173   0BB0           00681 DODECAY:    DECFSZ      DECCNT,F        ;decrement bar 
+0174   0008           00682             RETURN
+0175   0841           00683             MOVF        DECOPT,W
+0176   217F           00684             CALL        DECTAB
+0177   00B0           00685             MOVWF       DECCNT
+0178   0828           00686             MOVF        BOFFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0179   1C00           00687             BTFSS       STATUS,Z
+017A   03A8           00688             DECF        BOFFVL,F        ;do decay if >0
+017B   082A           00689             MOVF        BOFFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+017C   1C00           00690             BTFSS       STATUS,Z            
+017D   03AA           00691             DECF        BOFFVR,F
+017E   0008           00692             RETURN
+                      00693             
+017F   3903           00694 DECTAB      ANDLW       0X03
+0180   000B           00695             BRW
+0181   3407           00696             RETLW       .7          ;opt 0 slow ~4.8mS / seg
+0182   3405           00697             RETLW       .5          ;opt 1 med slow
+0183   3403           00698             RETLW       .3          ;opt 2 med-fast
+0184   3401           00699             RETLW       .1          ;opt 3 fast ~400uS/seg
+                      00700             
+0185                  00701 SETPKCL:    ;set peak clear/hold options
+0185   102D           00702             BCF         AUXIND,PAB00    ;bottom segments off 
+0186   01AE           00703             CLRF        REFVL
+0187   01AF           00704             CLRF        REFVR           ;ref dots off
+0188   01A8           00705             CLRF        BOFFVL
+0189   0834           00706             MOVF        HMSEC,W
+018A   393F           00707             ANDLW       0X3F            ;random-ish number
+018B   3E0A           00708             ADDLW       .10             ;offset it
+018C   08AB           00709             MOVF        DOTVL,F
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+018D   1800           00710             BTFSC       STATUS,Z
+018E   00AB           00711             MOVWF       DOTVL
+018F   0840           00712             MOVF        PKHOPT,W        ;get peakhold speed option 0-3
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0190   2168           00713             CALL        DISOPT          ;set right bar to display option
+0191   1D7F           00714             BTFSS       CONTROL,SWTSP
+0192   3205           00715             BRA         TSTPLP
+0193   117F           00716             BCF         CONTROL,SWTSP   ;do next option
+0194   0AC0           00717             INCF        PKHOPT,F
+0195   0840           00718             MOVF        PKHOPT,W
+0196   3903           00719             ANDLW       0X03
+0197   00C0           00720             MOVWF       PKHOPT      
+0198   1DFF           00721 TSTPLP      BTFSS       CONTROL,SWTLP
+0199   0008           00722             RETURN
+019A   11FF           00723             BCF         CONTROL,SWTLP
+019B   117F           00724             BCF         CONTROL,SWTSP
+019C   0AB1           00725             INCF        MODE,F
+019D   0008           00726             RETURN
+                      00727             
+                      00728             
+                      00729             
+019E   0840           00730 CLRPEAK:    MOVF        PKHOPT,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+019F   1800           00731             BTFSC       STATUS,Z        ;test if option 0 off
+01A0   320C           00732             BRA         PKOFF
+01A1   3A03           00733             XORLW       0X03            ;test if option 3 hold
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+01A2   1C00           00734             BTFSS       STATUS,Z
+01A3   3203           00735             BRA         PKCLR
+                      00736             
+01A4   0834           00737             MOVF        HMSEC,W         ;set PK timer
+01A5   00B3           00738             MOVWF       PKHTMR
+01A6   0AB3           00739             INCF        PKHTMR,F
+                      00740             
+01A7   0833           00741 PKCLR       MOVF        PKHTMR,W
+01A8   0634           00742             XORWF       HMSEC,W         
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+01A9   1C00           00743             BTFSS       STATUS,Z        ;
+01AA   0008           00744             RETURN
+01AB   0840           00745             MOVF        PKHOPT,W        ;get peak hold time option
+01AC   21B4           00746             CALL        PHOTAB
+01AD   0734           00747 PKOFF       ADDWF       HMSEC,W         ;set PK timer
+01AE   00B3           00748             MOVWF       PKHTMR
+01AF   01AB           00749 MANCLR      CLRF        DOTVL
+01B0   01AC           00750             CLRF        DOTVR
+01B1   13AD           00751             BCF         AUXIND,IND1     
+01B2   132D           00752             BCF         AUXIND,IND2
+01B3   0008           00753             RETURN
+                      00754 
+01B4   000B           00755 PHOTAB      BRW
+01B5   34FF           00756             RETLW       0XFF    ;opt 0  off
+01B6   340A           00757             RETLW       .10     ;opt 1 = 1s
+01B7   341E           00758             RETLW       .30     ;opt 2 = 3s
+01B8   3401           00759             RETLW       .1      ;peak hold
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00760             
+01B9                  00761 DCFLTL:     ;average input to filter out dc 
+01B9   0021           00762             MOVLB       1               ;select bank1
+01BA   0BB3           00763             DECFSZ      DFCNTL,F
+01BB   320B           00764             BRA         DCSETL
+01BC   0832           00765             MOVF        DCFTL2,W        ;get sum/256
+01BD   1FB2           00766             BTFSS       DCFTL2,7        ;test neg
+01BE   3202           00767             BRA         DCPOSL
+01BF   3AFF           00768             XORLW       0XFF            ;rectify
+01C0   3E01           00769             ADDLW       0X01            ;add 1 so -1 = 1
+01C1   00B8           00770 DCPOSL      MOVWF       DCOSL           ;save for later
+01C2   01B0           00771             CLRF        DCFTL0
+01C3   01B1           00772             CLRF        DCFTL1
+01C4   01B2           00773             CLRF        DCFTL2
+01C5   0020           00774             MOVLB       0
+01C6   0008           00775             RETURN
+                      00776             
+01C7   0821           00777 DCSETL      MOVF        ALINL,W         ;left add low byte
+01C8   07B0           00778             ADDWF       DCFTL0,F
+01C9   0820           00779             MOVF        ALINH,W
+01CA   3DB1           00780             ADDWFC      DCFTL1,F        
+01CB   3000           00781             MOVLW       0
+01CC   3DB2           00782             ADDWFC      DCFTL2,F 
+01CD   0020           00783             MOVLB       0
+01CE   0008           00784             RETURN          
+                      00785             
+01CF                  00786 DCFLTR:     
+01CF   0021           00787             MOVLB       1               ;select bank1
+01D0   0BB7           00788             DECFSZ      DFCNTR,F
+01D1   320B           00789             BRA         DCSETR
+01D2   0836           00790             MOVF        DCFTR2,W        ;bits 9-1
+01D3   1FB6           00791             BTFSS       DCFTR2,7
+01D4   3202           00792             BRA         DCPOSR
+01D5   3AFF           00793             XORLW       0XFF            ;rectify
+01D6   3E01           00794             ADDLW       0X01            ;add 1 so -1 = 1
+01D7   00B9           00795 DCPOSR      MOVWF       DCOSR           ;save for later
+01D8   01B4           00796             CLRF        DCFTR0
+01D9   01B5           00797             CLRF        DCFTR1
+01DA   01B6           00798             CLRF        DCFTR2
+01DB   0020           00799             MOVLB       0
+01DC   0008           00800             RETURN                  
+                      00801                     
+01DD   0823           00802 DCSETR      MOVF        ARINL,W         ;average right low byte
+01DE   07B4           00803             ADDWF       DCFTR0,F
+01DF   0822           00804             MOVF        ARINH,W
+01E0   3DB5           00805             ADDWFC      DCFTR1,F        
+01E1   3000           00806             MOVLW       0
+01E2   3DB6           00807             ADDWFC      DCFTR2,F 
+01E3   0020           00808             MOVLB       0
+01E4   0008           00809             RETURN         
+                      00810 ;----------------------------------------------------------------------------------
+                      00811 
+                      00812 
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00813 ; remaining code goes here
+                      00814             
+01E5                  00815 DOHMSC:     ;do 100millisecond counter
+01E5   0BB5           00816             DECFSZ      FRMCNT,F        ;decrement fram count down to zero
+01E6   0008           00817             RETURN
+01E7   300D           00818             MOVLW       .13             ; 100mS / (400uS * 19)
+01E8   00B5           00819             MOVWF       FRMCNT
+01E9   0AB4           00820             INCF        HMSEC,F
+01EA   0008           00821             RETURN
+                      00822             
+                      00823 ;VFD display routines called from timer interrupt or main loop
+                      00824 
+01EB                  00825 SETTIMER:       ;usedto trigger adc go at regular intervals
+Error[113]  : Symbol not previously defined (TMR0)
+01EB   0020           00826             BANKSEL     TMR0
+01EC   3077           00827             MOVLW       .255 - (.8*.17)         ;osc/4 17us 
+Error[113]  : Symbol not previously defined (TMR0)
+01ED   0080           00828             MOVWF       TMR0    ;set timer      
+01EE   0008           00829             RETURN      
+                      00830 
+                      00831 ;calculate bit for shifting to display 
+                      00832 ;anode bits are determained by asigning a value to each anode from the bottom up 
+                      00833 ;and comparing to display value     
+01EF                  00834 DOFRM:      
+01EF   0020           00835             BANKSEL     0
+01F0   0AA5           00836             INCF        FRMNO,F         ;next frame (19 frames numbered 0-18)
+01F1   0825           00837             MOVF        FRMNO,W         ;get frame number and test if >18
+01F2   3C12           00838             SUBLW       .18
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+01F3   1C00           00839             BTFSS       STATUS,C
+01F4   01A5           00840             CLRF        FRMNO           ;reset frame number
+                      00841 
+01F5   01A0           00842             CLRF        PB29            ;switch off anodes
+01F6   01A1           00843             CLRF        PAB01
+01F7   01A2           00844             CLRF        PA29
+01F8   22DC           00845             CALL        SETGRID         ;set up grids
+01F9   22E4           00846             CALL        SETAVAL         ;set initial anode value
+                      00847 
+01FA   0825           00848             MOVF        FRMNO,W         ;test if frame 0/grid1
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+01FB   1C00           00849             BTFSS       STATUS,Z
+01FC   2A12           00850             GOTO        TSTODD          ;goto test Odd frame. Odd frames have two grids & set PAB10
+                      00851 
+01FD   13FF           00852             BCF         CONTROL,REFEN
+01FE   0BB2           00853             DECFSZ      REFCNT,F
+01FF   2A03           00854             GOTO        NOREF
+0200   17FF           00855             BSF         CONTROL,REFEN   ;do ref on this loop
+                      00856             ;reset ref frame counter
+0201   3004           00857             MOVLW       0X04            ;increase this to dim ref
+0202   00B2           00858             MOVWF       REFCNT
+                      00859 
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0203                  00860 NOREF       
+                      00861 ;do frame 0 - this is a special even frame because it has to test 
+                      00862 ;PAB00, PA1a & PB1a as well as PA2-9 & PB2-9 (PAB29)
+                      00863                                         
+0203   2250           00864             CALL        SETPAB1A                ;do anodes PA1a & PB1a
+0204   0AA6           00865             INCF        ANVAL,F                 ;increment anode value and...
+0205   182D           00866             BTFSC       AUXIND,PAB00    ;test if bottom segment should be on
+0206   1423           00867             BSF         GRD17,PAB00
+                      00868 
+0207   2223           00869 EVNFRM      CALL        SETPAB29        ;do anodes PA2-9 & PB2-9
+                      00870 
+0208   0AA6           00871             INCF        ANVAL,F
+0209   0825           00872             MOVF        FRMNO,W         ;frame 19 also has to set PA0b & PB0b
+020A   3A12           00873             XORLW       .18
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+020B   1800           00874             BTFSC       STATUS,Z
+020C   22B9           00875             CALL        SETPAB0B
+                      00876 
+020D   082D           00877             MOVF        AUXIND,W                ;get LED indicator switches
+020E   39F8           00878             ANDLW       0XF8
+020F   0424           00879             IORWF       GRD810,W                ;set output bits        
+0210   00A4           00880             MOVWF       GRD810
+                      00881 
+0211                  00882 SHFT        ;Call       Shftout         ;shift output bytes to display
+0211   0008           00883             RETURN
+                      00884 
+                      00885 
+0212   0825           00886 TSTODD      MOVF        FRMNO,W
+0213   3901           00887             ANDLW       0X01
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0214   1800           00888             BTFSC       STATUS,Z
+0215   2A07           00889             GOTO        EVNFRM          ;do even frame output
+                      00890 
+0216   0825           00891             MOVF        FRMNO,W         ;this is an odd frame so now test if ab or ba   
+0217   2050           00892             CALL        GRDTABL         ;get low byte
+0218   3901           00893             ANDLW       0X01            ;test  abba flag
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0219   1C00           00894             BTFSS       STATUS,Z        ;w=1=AB  w=0=BA
+021A   2A1F           00895             GOTO        SETAB
+                      00896 ;setba
+021B   22B9           00897             CALL        SETPAB0B        ;do anodes PA0b & PB0b
+021C   0AA6           00898             INCF        ANVAL,F         ;increment anode value then...
+021D   2250           00899             CALL        SETPAB1A        ;do anodes PA1a & PB1a
+021E   2A11           00900             GOTO        SHFT
+                      00901 
+021F   2273           00902 SETAB       CALL        SETPAB0A        ;do anodes PA0a & PB0a
+0220   0AA6           00903             INCF        ANVAL,F         ;increment anode value then...
+0221   2296           00904             CALL        SETPAB1B        ;do anodes PA1b & PB1b  
+0222   2A11           00905             GOTO        SHFT
+                      00906 
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00907 
+                      00908 ;anode setting routines
+                      00909 ;
+0223                  00910 SETPAB29:
+0223   3008           00911             MOVLW       0X08
+0224   00F2           00912             MOVWF       INTEMP0         ;bit counter
+0225   2A2B           00913             GOTO        INIPAB29
+                      00914 
+0226   0AA6           00915 PAB29LP     INCF        ANVAL,F         ;increment anode value
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0227   1000           00916             BCF         STATUS,C
+0228   0CA2           00917             RRF         PA29,F          ;shift bits down
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0229   1000           00918             BCF         STATUS,C
+022A   0CA0           00919             RRF         PB29,F
+                      00920 
+022B   0826           00921 INIPAB29    MOVF        ANVAL,W         ;test Bar on left values
+022C   0227           00922             SUBWF       BONVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+022D   1C00           00923             BTFSS       STATUS,C        ;if Anval > Bar on left value...
+022E   17A0           00924             BSF         PB29,7          ;switch on bit7 (will be shifted down)
+022F   0826           00925             MOVF        ANVAL,W
+0230   0229           00926             SUBWF       BONVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0231   1C00           00927             BTFSS       STATUS,C
+0232   17A2           00928             BSF         PA29,7
+                      00929 
+0233   0826           00930             MOVF        ANVAL,W         ;test bar off values
+0234   0228           00931             SUBWF       BOFFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0235   1C00           00932             BTFSS       STATUS,C        ;if anval > Bar off value
+0236   13A0           00933             BCF         PB29,7          ;switch anode off
+0237   0826           00934             MOVF        ANVAL,W
+0238   022A           00935             SUBWF       BOFFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0239   1C00           00936             BTFSS       STATUS,C
+023A   13A2           00937             BCF         PA29,7
+                      00938 
+023B   0826           00939             MOVF        ANVAL,W         ;test Dot values
+023C   022B           00940             SUBWF       DOTVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+023D   1800           00941             BTFSC       STATUS,Z        ;if anval = dot value
+023E   17A0           00942             BSF         PB29,7          ;switch anode on
+023F   0826           00943             MOVF        ANVAL,W
+0240   022C           00944             SUBWF       DOTVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (Z)
+0241   1800           00945             BTFSC       STATUS,Z
+0242   17A2           00946             BSF         PA29,7
+                      00947             
+0243   1FFF           00948             BTFSS       CONTROL,REFEN   ;do ref on this loop
+0244   2A4D           00949             GOTO        NOREF1
+                      00950             ;do ref dot
+0245   0826           00951             MOVF        ANVAL,W         ;test Dot values
+0246   022E           00952             SUBWF       REFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0247   1800           00953             BTFSC       STATUS,Z        ;if anval = dot value
+0248   17A0           00954             BSF         PB29,7          ;switch anode on
+0249   0826           00955             MOVF        ANVAL,W
+024A   022F           00956             SUBWF       REFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+024B   1800           00957             BTFSC       STATUS,Z
+024C   17A2           00958             BSF         PA29,7
+                      00959             
+024D   0BF2           00960 NOREF1      DECFSZ      INTEMP0,F
+024E   2A26           00961             GOTO        PAB29LP
+                      00962 
+024F   0008           00963             RETURN
+                      00964 
+                      00965 
+0250                  00966 SETPAB1A:
+0250   0826           00967             MOVF        ANVAL,W         ;test Bar on values
+0251   0227           00968             SUBWF       BONVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0252   1C00           00969             BTFSS       STATUS,C        ;if Anval > Bar on value...
+0253   1621           00970             BSF         PAB01,PB1A      ;switch anode on
+0254   0826           00971             MOVF        ANVAL,W
+0255   0229           00972             SUBWF       BONVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0256   1C00           00973             BTFSS       STATUS,C
+0257   1721           00974             BSF         PAB01,PA1A
+                      00975 
+0258   0826           00976             MOVF        ANVAL,W         ;test bar off values
+0259   0228           00977             SUBWF       BOFFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+025A   1C00           00978             BTFSS       STATUS,C        ;if anval > Bar off value
+025B   1221           00979             BCF         PAB01,PB1A      ;switch anode off
+025C   0826           00980             MOVF        ANVAL,W
+025D   022A           00981             SUBWF       BOFFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+025E   1C00           00982             BTFSS       STATUS,C
+025F   1321           00983             BCF         PAB01,PA1A
+                      00984 
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 22
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0260   0826           00985             MOVF        ANVAL,W         ;test Dot values
+0261   022B           00986             SUBWF       DOTVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0262   1800           00987             BTFSC       STATUS,Z        ;if anval = dot value
+0263   1621           00988             BSF         PAB01,PB1A      ;switch anode on
+0264   0826           00989             MOVF        ANVAL,W
+0265   022C           00990             SUBWF       DOTVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0266   1800           00991             BTFSC       STATUS,Z
+0267   1721           00992             BSF         PAB01,PA1A
+                      00993 
+0268   1FFF           00994             BTFSS       CONTROL,REFEN   ;do ref on this loop
+0269   0008           00995             RETURN
+                      00996             ;do ref dots
+026A   0826           00997             MOVF        ANVAL,W         ;test Dot values
+026B   022E           00998             SUBWF       REFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+026C   1800           00999             BTFSC       STATUS,Z        ;if anval = dot value
+026D   1621           01000             BSF         PAB01,PB1A      ;switch anode on
+026E   0826           01001             MOVF        ANVAL,W
+026F   022F           01002             SUBWF       REFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0270   1800           01003             BTFSC       STATUS,Z
+0271   1721           01004             BSF         PAB01,PA1A
+                      01005             
+0272   0008           01006             RETURN
+                      01007 
+0273                  01008 SETPAB0A:
+0273   0826           01009             MOVF        ANVAL,W         ;test Bar on values
+0274   0227           01010             SUBWF       BONVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0275   1C00           01011             BTFSS       STATUS,C        ;if Anval > Bar on value...
+0276   1421           01012             BSF         PAB01,PB0A      ;switch anode on
+0277   0826           01013             MOVF        ANVAL,W
+0278   0229           01014             SUBWF       BONVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0279   1C00           01015             BTFSS       STATUS,C
+027A   1521           01016             BSF         PAB01,PA0A
+                      01017 
+027B   0826           01018             MOVF        ANVAL,W         ;test Bar off values
+027C   0228           01019             SUBWF       BOFFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+027D   1C00           01020             BTFSS       STATUS,C        ;if anval > Bar off value
+027E   1021           01021             BCF         PAB01,PB0A      ;switch anode off
+027F   0826           01022             MOVF        ANVAL,W
+0280   022A           01023             SUBWF       BOFFVR,W
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 23
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0281   1C00           01024             BTFSS       STATUS,C
+0282   1121           01025             BCF         PAB01,PA0A
+                      01026 
+0283   0826           01027             MOVF        ANVAL,W         ;test Dot values
+0284   022B           01028             SUBWF       DOTVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0285   1800           01029             BTFSC       STATUS,Z        ;if anval = dot value
+0286   1421           01030             BSF         PAB01,PB0A      ;switch anode on
+0287   0826           01031             MOVF        ANVAL,W
+0288   022C           01032             SUBWF       DOTVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0289   1800           01033             BTFSC       STATUS,Z
+028A   1521           01034             BSF         PAB01,PA0A
+                      01035 
+028B   1FFF           01036             BTFSS       CONTROL,REFEN   ;do ref on this loop
+028C   0008           01037             RETURN          
+                      01038             ;do ref dots
+028D   0826           01039             MOVF        ANVAL,W         ;test Dot values
+028E   022E           01040             SUBWF       REFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+028F   1800           01041             BTFSC       STATUS,Z        ;if anval = dot value
+0290   1421           01042             BSF         PAB01,PB0A      ;switch anode on
+0291   0826           01043             MOVF        ANVAL,W
+0292   022F           01044             SUBWF       REFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+0293   1800           01045             BTFSC       STATUS,Z
+0294   1521           01046             BSF         PAB01,PA0A
+0295   0008           01047             RETURN
+                      01048             
+                      01049             
+                      01050 
+0296                  01051 SETPAB1B:
+0296   0826           01052             MOVF        ANVAL,W         ;test Bar on values
+0297   0227           01053             SUBWF       BONVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+0298   1C00           01054             BTFSS       STATUS,C        ;if Anval > Bar on value...
+0299   16A1           01055             BSF         PAB01,PB1B      ;switch anode on
+029A   0826           01056             MOVF        ANVAL,W
+029B   0229           01057             SUBWF       BONVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+029C   1C00           01058             BTFSS       STATUS,C
+029D   17A1           01059             BSF         PAB01,PA1B
+                      01060 
+029E   0826           01061             MOVF        ANVAL,W         ;test bar off values
+029F   0228           01062             SUBWF       BOFFVL,W
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 24
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02A0   1C00           01063             BTFSS       STATUS,C        ;if anval > Bar off value
+02A1   12A1           01064             BCF         PAB01,PB1B      ;switch anode off
+02A2   0826           01065             MOVF        ANVAL,W
+02A3   022A           01066             SUBWF       BOFFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02A4   1C00           01067             BTFSS       STATUS,C
+02A5   13A1           01068             BCF         PAB01,PA1B
+                      01069 
+02A6   0826           01070             MOVF        ANVAL,W         ;test Dot values
+02A7   022B           01071             SUBWF       DOTVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02A8   1800           01072             BTFSC       STATUS,Z        ;if anval = dot value
+02A9   16A1           01073             BSF         PAB01,PB1B      ;switch anode on
+02AA   0826           01074             MOVF        ANVAL,W
+02AB   022C           01075             SUBWF       DOTVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02AC   1800           01076             BTFSC       STATUS,Z
+02AD   17A1           01077             BSF         PAB01,PA1B
+                      01078             
+02AE   1FFF           01079             BTFSS       CONTROL,REFEN   ;do ref on this loop
+02AF   0008           01080             RETURN
+                      01081             ;do ref dots
+02B0   0826           01082             MOVF        ANVAL,W         ;test Dot values
+02B1   022E           01083             SUBWF       REFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02B2   1800           01084             BTFSC       STATUS,Z        ;if anval = dot value
+02B3   16A1           01085             BSF         PAB01,PB1B      ;switch anode on
+02B4   0826           01086             MOVF        ANVAL,W
+02B5   022F           01087             SUBWF       REFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02B6   1800           01088             BTFSC       STATUS,Z
+02B7   17A1           01089             BSF         PAB01,PA1B
+02B8   0008           01090             RETURN
+                      01091 
+02B9                  01092 SETPAB0B:
+02B9   0826           01093             MOVF        ANVAL,W         ;test Bar on values
+02BA   0227           01094             SUBWF       BONVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02BB   1C00           01095             BTFSS       STATUS,C        ;if Anval > Bar on value...
+02BC   14A1           01096             BSF         PAB01,PB0B      ;switch anode on
+02BD   0826           01097             MOVF        ANVAL,W
+02BE   0229           01098             SUBWF       BONVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02BF   1C00           01099             BTFSS       STATUS,C
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 25
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+02C0   15A1           01100             BSF         PAB01,PA0B
+                      01101 
+02C1   0826           01102             MOVF        ANVAL,W         ;test Bar off values
+02C2   0228           01103             SUBWF       BOFFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02C3   1C00           01104             BTFSS       STATUS,C        ;if anval > Bar off value
+02C4   10A1           01105             BCF         PAB01,PB0B      ;switch anode off
+02C5   0826           01106             MOVF        ANVAL,W
+02C6   022A           01107             SUBWF       BOFFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (C)
+02C7   1C00           01108             BTFSS       STATUS,C
+02C8   11A1           01109             BCF         PAB01,PA0B
+                      01110 
+02C9   0826           01111             MOVF        ANVAL,W         ;test Dot values
+02CA   022B           01112             SUBWF       DOTVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02CB   1800           01113             BTFSC       STATUS,Z        ;if anval = dot value
+02CC   14A1           01114             BSF         PAB01,PB0B      ;switch anode on
+02CD   0826           01115             MOVF        ANVAL,W
+02CE   022C           01116             SUBWF       DOTVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02CF   1800           01117             BTFSC       STATUS,Z
+02D0   15A1           01118             BSF         PAB01,PA0B
+                      01119 
+02D1   1FFF           01120             BTFSS       CONTROL,REFEN   ;do ref on this loop
+02D2   0008           01121             RETURN          
+                      01122             ;do ref dots
+02D3   0826           01123             MOVF        ANVAL,W         ;test Dot values
+02D4   022E           01124             SUBWF       REFVL,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02D5   1800           01125             BTFSC       STATUS,Z        ;if anval = dot value
+02D6   14A1           01126             BSF         PAB01,PB0B      ;switch anode on
+02D7   0826           01127             MOVF        ANVAL,W
+02D8   022F           01128             SUBWF       REFVR,W
+Error[113]  : Symbol not previously defined (STATUS)
+Error[113]  : Symbol not previously defined (Z)
+02D9   1800           01129             BTFSC       STATUS,Z
+02DA   15A1           01130             BSF         PAB01,PA0B          
+02DB   0008           01131             RETURN
+                      01132 
+                      01133 ;This routine sets the grid bytes for the current frame
+02DC                  01134 SETGRID:
+02DC   0825           01135             MOVF        FRMNO,W         ;get frame number
+02DD   2050           01136             CALL        GRDTABL         ;get low byte
+02DE   39FE           01137             ANDLW       0XFE            ;ignore and clear bit0 (ABBA flag)
+02DF   00A3           01138             MOVWF       GRD17           ;save grid setting 1-7
+02E0   0825           01139             MOVF        FRMNO,W         ;get frame number
+02E1   2064           01140             CALL        GRDTABH         ;get Hi byte
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 26
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+02E2   00A4           01141             MOVWF       GRD810          ;save grid setting 8-10
+02E3   0008           01142             RETURN      
+                      01143 
+02E4                  01144 SETAVAL:
+02E4   0825           01145             MOVF        FRMNO,W         ;get frame number
+02E5   203C           01146             CALL        ANVTAB          ;get value
+02E6   00A6           01147             MOVWF       ANVAL           ;save grid setting
+02E7   0008           01148             RETURN                              
+                      01149 
+                      01150 
+                      01151 
+                      01152 ;shift bits out to display
+                      01153 
+02E8                  01154 INITUART:
+Error[113]  : Symbol not previously defined (APFCON)
+02E8   0020           01155             BANKSEL     APFCON      ;set alt pins
+02E9   3084           01156             MOVLW       B'10000100'
+Error[113]  : Symbol not previously defined (APFCON)
+02EA   0080           01157             MOVWF       APFCON
+                      01158                        
+Error[113]  : Symbol not previously defined (SPBRGH)
+02EB   0020           01159             BANKSEL     SPBRGH      ;BANK 3
+Error[113]  : Symbol not previously defined (SPBRGH)
+02EC   0180           01160             CLRF        SPBRGH
+02ED   3010           01161             MOVLW       0X10        ;use 4 for 16MHz
+Error[113]  : Symbol not previously defined (SPBRGL)
+02EE   0080           01162             MOVWF       SPBRGL
+                      01163 
+                      01164             ;Banksel    BAUDCON     ;BANK 3
+02EF   3018           01165             MOVLW       B'00011000'
+Error[113]  : Symbol not previously defined (BAUDCON)
+02F0   0080           01166             MOVWF       BAUDCON
+                      01167             
+                      01168             ;Banksel    TXSTA       ;set tx control BANK 3
+02F1   30B0           01169             MOVLW       B'10110000'
+Error[113]  : Symbol not previously defined (TXSTA)
+02F2   0080           01170             MOVWF       TXSTA
+                      01171    
+                      01172             ;Banksel    RCSTA       ;BANK 3
+02F3   3080           01173             MOVLW       B'10000000' ;enable USART 
+Error[113]  : Symbol not previously defined (RCSTA)
+02F4   0080           01174             MOVWF       RCSTA
+                      01175 
+02F5   0008           01176             RETURN
+                      01177             
+02F6   3020           01178 SHFTOUT:    MOVLW       PB29
+Error[113]  : Symbol not previously defined (FSR0L)
+02F7   0080           01179             MOVWF       FSR0L       ;set indirection pointer
+Error[113]  : Symbol not previously defined (FSR0H)
+02F8   0180           01180             CLRF        FSR0H
+02F9   3005           01181             MOVLW       0X05        ;set byte counter
+02FA   00F2           01182             MOVWF       INTEMP0
+Error[113]  : Symbol not previously defined (PORTA)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 27
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+02FB   0020           01183             BANKSEL     PORTA       ;BANK 0
+02FC   1000           01184             BCF         DISPORT,LATCH       
+                      01185  
+Error[113]  : Symbol not previously defined (TXREG)
+02FD   0020           01186             BANKSEL     TXREG       ;BANK 3
+02FE   0012           01187 WAITTXF     MOVIW       INDF0++     ;get byte at pointer and increment FSR
+Error[113]  : Symbol not previously defined (TXREG)
+02FF   0080           01188             MOVWF       TXREG       ;output to shifter
+                      01189 
+                      01190             ;Banksel    TXSTA       ;BANK 3
+Error[113]  : Symbol not previously defined (TXSTA)
+Error[113]  : Symbol not previously defined (TRMT)
+0300   1C00           01191 WAITLST     BTFSS       TXSTA,TRMT          
+0301   2B00           01192             GOTO        WAITLST     ;wait for last buffer clear     
+0302   0BF2           01193             DECFSZ      INTEMP0,F   ;decrement counter
+0303   2AFE           01194             GOTO        WAITTXF     ;loop 5 bytes out       
+                      01195 
+0304   0020           01196             MOVLB       0
+0305   1400           01197             BSF         DISPORT,LATCH
+                      01198             
+0306   0008           01199             RETURN
+                      01200             
+                      01201 ;**********************************************************************************
+                      01202 ;Flash  read and write 
+                      01203             
+                      01204 ;Save PREFs    (will hang for 4mS so clear display first)
+0307   2318           01205 PRFSAVE:    CALL        FLCLR           ;erase a row (16 bytes)
+0308   232B           01206             CALL        FLWRITE         ;save 16 bytes @ PREFS as RETLW 0x??
+0309   0020           01207             MOVLB       0               ;select bank 0
+030A   01B1           01208             CLRF        MODE            ;reset mode
+030B   0008           01209             RETURN
+                      01210             
+                      01211             
+                      01212             
+                      01213             
+                      01214 ;---------------------------------------------------------------------------------          
+                      01215 ; This code block will read 1 word of program
+                      01216 ; memory at the memory address:
+                      01217 ;PROG_ADDR_HI : PROG_ADDR_LO
+                      01218 ; data will be returned in the variables;
+                      01219 ; PROG_DATA_HI, PROG_DATA_LO
+                      01220 
+                      01221 
+                      01222             
+030C                  01223 FLREAD:
+Error[113]  : Symbol not previously defined (PMADRL)
+030C   0020           01224             BANKSEL     PMADRL          ; Select Bank for PMCON registers
+030D   3080           01225             MOVLW       0X80            ;high endurance flash 0x780-0x7ff
+Error[113]  : Symbol not previously defined (PMADRL)
+030E   0080           01226             MOVWF       PMADRL          ; Store LSB of address
+030F   3007           01227             MOVLW       0X07 ;
+Error[113]  : Symbol not previously defined (PMADRH)
+0310   0080           01228             MOVWF       PMADRH          ; Store MSB of address
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 28
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (CFGS)
+0311   1000           01229             BCF         PMCON1,CFGS     ; Do not select Configuration Space
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (RD)
+0312   1400           01230             BSF         PMCON1,RD       ; Initiate read
+0313   0000           01231             NOP                         ; Ignored (Figure 10-2)
+0314   0000           01232             NOP                         ; Ignored (Figure 10-2)
+Error[113]  : Symbol not previously defined (PMDATL)
+0315   0800           01233             MOVF        PMDATL,W        ; Get LSB of word
+                      01234 
+Error[113]  : Symbol not previously defined (PMDATH)
+0316   0800           01235             MOVF        PMDATH,W        ; Get MSB of word
+0317   0008           01236             RETURN
+                      01237             
+                      01238 ; This row erase routine assumes the HEF is located at 0x780:
+                      01239 ;clear display before call because of 2mS hang
+                      01240             
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (GIE)
+0318   1000           01241 FLCLR:      BCF         INTCON,GIE  ; Disable ints so required sequences will execute properly
+Error[113]  : Symbol not previously defined (PMADRL)
+0319   0020           01242             BANKSEL     PMADRL
+031A   3080           01243             MOVLW       0X80        ; Load lower 8 bits of erase address boundary
+Error[113]  : Symbol not previously defined (PMADRL)
+031B   0080           01244             MOVWF       PMADRL
+031C   3007           01245             MOVLW       0X07        ; Load upper 6 bits of erase address boundary
+Error[113]  : Symbol not previously defined (PMADRH)
+031D   0080           01246             MOVWF       PMADRH
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (CFGS)
+031E   1000           01247             BCF         PMCON1,CFGS ; Not configuration space
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (FREE)
+031F   1400           01248             BSF         PMCON1,FREE ; Specify an erase operation
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WREN)
+0320   1400           01249             BSF         PMCON1,WREN ; Enable writes
+0321   3055           01250             MOVLW       55H         ; Start of required sequence to initiate erase
+Error[113]  : Symbol not previously defined (PMCON2)
+0322   0080           01251             MOVWF       PMCON2      ; Write 55h
+0323   30AA           01252             MOVLW       0AAH ;
+Error[113]  : Symbol not previously defined (PMCON2)
+0324   0080           01253             MOVWF       PMCON2      ; Write AAh
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WR)
+0325   1400           01254             BSF         PMCON1,WR   ; Set WR bit to begin erase
+0326   0000           01255             NOP                     ; NOP instructions are forced as processor starts
+0327   0000           01256             NOP                     ; row erase of program memory.
+                      01257                                     ;
+                      01258                                     ; The processor stalls until the erase process is complete
+                      01259                                     ; after erase processor continues with 3rd instruction
+Error[113]  : Symbol not previously defined (PMCON1)
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 29
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (WREN)
+0328   1000           01260             BCF         PMCON1,WREN ; Disable writes
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (GIE)
+0329   1400           01261             BSF         INTCON,GIE  ; Enable interrupts     
+032A   0008           01262             RETURN
+                      01263             
+                      01264 ; This write routine assumes the following:
+                      01265             ;writes 16 bytes @ PREFS to HEF @ 0x780
+                      01266             ;as RETLW 0x?? 
+                      01267 
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (GIE)
+032B   1000           01268 FLWRITE:    BCF         INTCON,GIE ; Disable ints so required sequences will execute properly
+Error[113]  : Symbol not previously defined (PMADRH)
+032C   0020           01269             BANKSEL     PMADRH      ; Bank 3
+032D   3010           01270             MOVLW       .16
+032E   00F0           01271             MOVWF       TEMP0       ;set counter
+032F   3007           01272             MOVLW       0X07        ;set address of HEF
+Error[113]  : Symbol not previously defined (PMADRH)
+0330   0080           01273             MOVWF       PMADRH      ;
+0331   3080           01274             MOVLW       0X80
+Error[113]  : Symbol not previously defined (PMADRL)
+0332   0080           01275             MOVWF       PMADRL      ;
+                      01276             
+0333   3040           01277             MOVLW       PREFS       ;address of prefs into fsr
+Error[113]  : Symbol not previously defined (FSR0L)
+0334   0080           01278             MOVWF       FSR0L       ;
+0335   3000           01279             MOVLW       0X00        ; Load initial data address
+Error[113]  : Symbol not previously defined (FSR0H)
+0336   0080           01280             MOVWF       FSR0H ;
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (CFGS)
+0337   1000           01281             BCF         PMCON1,CFGS ; Not configuration space
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WREN)
+0338   1400           01282             BSF         PMCON1,WREN ; Enable writes
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (LWLO)
+0339   1400           01283             BSF         PMCON1,LWLO ; Only Load Write Latches
+033A   3201           01284             BRA         LOOP+1
+Error[113]  : Symbol not previously defined (PMADRL)
+033B   0A80           01285 LOOP        INCF        PMADRL,F    ; Still loading latches Increment address
+033C   0012           01286             MOVIW       FSR0++      ; Load first data byte into lower
+Error[113]  : Symbol not previously defined (PMDATL)
+033D   0080           01287             MOVWF       PMDATL      ;
+033E   3034           01288             MOVLW       0X34        ;RETLW instruction
+Error[113]  : Symbol not previously defined (PMDATH)
+033F   0080           01289             MOVWF       PMDATH ;
+0340   3055           01290             MOVLW       55H         ; Start of required write sequence:
+Error[113]  : Symbol not previously defined (PMCON2)
+0341   0080           01291             MOVWF       PMCON2      ; Write 55h
+0342   30AA           01292             MOVLW       0AAH ;
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 30
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (PMCON2)
+0343   0080           01293             MOVWF       PMCON2      ; Write AAh
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WR)
+0344   1400           01294             BSF         PMCON1,WR   ; Set WR bit to begin write
+0345   0000           01295             NOP                     ; NOP instructions are forced as processor
+                      01296                                     ; loads program memory write latches
+0346   0000           01297             NOP ;
+0347   0BF0           01298             DECFSZ      TEMP0,F
+0348   2B3B           01299             GOTO        LOOP            ; Write next latches
+0349                  01300 START_WRITE
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (LWLO)
+0349   1000           01301             BCF         PMCON1,LWLO ; No more loading latches - Actually start Flash program
+                      01302             ; memory write
+034A   3055           01303             MOVLW       55H         ; Start of required write sequence:
+Error[113]  : Symbol not previously defined (PMCON2)
+034B   0080           01304             MOVWF       PMCON2      ; Write 55h
+034C   30AA           01305             MOVLW       0AAH ;
+Error[113]  : Symbol not previously defined (PMCON2)
+034D   0080           01306             MOVWF       PMCON2      ; Write AAh
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WR)
+034E   1400           01307             BSF         PMCON1,WR   ; Set WR bit to begin write
+034F   0000           01308             NOP                     ; NOP instructions are forced as processor writes
+                      01309                                     ; all the program memory write latches simultaneously
+0350   0000           01310             NOP                     ; to program memory.
+                      01311                                     ; After NOPs, the processor
+                      01312                                     ; stalls until the self-write process in complete
+                      01313                                     ; after write processor continues with 3rd instruction
+Error[113]  : Symbol not previously defined (PMCON1)
+Error[113]  : Symbol not previously defined (WREN)
+0351   1000           01314             BCF         PMCON1,WREN ; Disable writes
+Error[113]  : Symbol not previously defined (INTCON)
+Error[113]  : Symbol not previously defined (GIE)
+0352   1400           01315             BSF         INTCON,GIE  ; Enable interrupts
+                      01316             
+0353   0008           01317             RETURN
+                      01318     
+0400                  01319             ORG     0X400           ;align table with page boundary
+                      01320             
+                      01321 ;VU scale +5 at top, -5 middle, -30 bottom          
+                      01322             ;take 8bit adc value 0-fsd and converts to bar number
+0400   000B           01323 SCALETAB:   BRW    
+0401   3400           01324             RETLW  .0
+0402   3400           01325             RETLW  .0
+0403   3400           01326             RETLW  .0
+0404   3400           01327             RETLW  .0
+0405   3401           01328             RETLW  .1
+0406   3402           01329             RETLW  .2
+0407   3402           01330             RETLW  .2
+0408   3403           01331             RETLW  .3
+0409   3403           01332             RETLW  .3
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 31
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+040A   3404           01333             RETLW  .4
+040B   3404           01334             RETLW  .4
+040C   3404           01335             RETLW  .4
+040D   3405           01336             RETLW  .5
+040E   3406           01337             RETLW  .6
+040F   3408           01338             RETLW  .8
+0410   3409           01339             RETLW  .9
+0411   340A           01340             RETLW  .10
+0412   340B           01341             RETLW  .11
+0413   340C           01342             RETLW  .12
+0414   340D           01343             RETLW  .13
+0415   340E           01344             RETLW  .14
+0416   340E           01345             RETLW  .14
+0417   340F           01346             RETLW  .15
+0418   3410           01347             RETLW  .16
+0419   3411           01348             RETLW  .17
+041A   3411           01349             RETLW  .17
+041B   3412           01350             RETLW  .18
+041C   3413           01351             RETLW  .19
+041D   3413           01352             RETLW  .19
+041E   3414           01353             RETLW  .20
+041F   3414           01354             RETLW  .20
+0420   3415           01355             RETLW  .21
+0421   3415           01356             RETLW  .21
+0422   3416           01357             RETLW  .22
+0423   3417           01358             RETLW  .23
+0424   3417           01359             RETLW  .23
+0425   3417           01360             RETLW  .23
+0426   3418           01361             RETLW  .24
+0427   3418           01362             RETLW  .24
+0428   3419           01363             RETLW  .25
+0429   341A           01364             RETLW  .26
+042A   341B           01365             RETLW  .27
+042B   341C           01366             RETLW  .28
+042C   341D           01367             RETLW  .29
+042D   341E           01368             RETLW  .30
+042E   341F           01369             RETLW  .31
+042F   3420           01370             RETLW  .32
+0430   3421           01371             RETLW  .33
+0431   3422           01372             RETLW  .34
+0432   3423           01373             RETLW  .35
+0433   3424           01374             RETLW  .36
+0434   3424           01375             RETLW  .36
+0435   3425           01376             RETLW  .37
+0436   3426           01377             RETLW  .38
+0437   3427           01378             RETLW  .39
+0438   3428           01379             RETLW  .40
+0439   3428           01380             RETLW  .40
+043A   3429           01381             RETLW  .41
+043B   342A           01382             RETLW  .42
+043C   342B           01383             RETLW  .43
+043D   342B           01384             RETLW  .43
+043E   342C           01385             RETLW  .44
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 32
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+043F   342D           01386             RETLW  .45
+0440   342D           01387             RETLW  .45
+0441   342E           01388             RETLW  .46
+0442   342F           01389             RETLW  .47
+0443   342F           01390             RETLW  .47
+0444   3430           01391             RETLW  .48
+0445   3431           01392             RETLW  .49
+0446   3431           01393             RETLW  .49
+0447   3432           01394             RETLW  .50
+0448   3433           01395             RETLW  .51
+0449   3434           01396             RETLW  .52
+044A   3434           01397             RETLW  .52
+044B   3434           01398             RETLW  .52
+044C   3435           01399             RETLW  .53
+044D   3435           01400             RETLW  .53
+044E   3436           01401             RETLW  .54
+044F   3437           01402             RETLW  .55
+0450   3437           01403             RETLW  .55
+0451   3438           01404             RETLW  .56
+0452   3438           01405             RETLW  .56
+0453   3439           01406             RETLW  .57
+0454   3439           01407             RETLW  .57
+0455   343A           01408             RETLW  .58
+0456   343A           01409             RETLW  .58
+0457   343B           01410             RETLW  .59
+0458   343B           01411             RETLW  .59
+0459   343C           01412             RETLW  .60
+045A   343C           01413             RETLW  .60
+045B   343D           01414             RETLW  .61
+045C   343D           01415             RETLW  .61
+045D   343E           01416             RETLW  .62
+045E   343E           01417             RETLW  .62
+045F   343F           01418             RETLW  .63
+0460   343F           01419             RETLW  .63
+0461   343F           01420             RETLW  .63
+0462   3440           01421             RETLW  .64
+0463   3440           01422             RETLW  .64
+0464   3441           01423             RETLW  .65
+0465   3441           01424             RETLW  .65
+0466   3442           01425             RETLW  .66
+0467   3442           01426             RETLW  .66
+0468   3443           01427             RETLW  .67
+0469   3443           01428             RETLW  .67
+046A   3444           01429             RETLW  .68
+046B   3444           01430             RETLW  .68
+046C   3444           01431             RETLW  .68
+046D   3445           01432             RETLW  .69
+046E   3445           01433             RETLW  .69
+046F   3445           01434             RETLW  .69
+0470   3446           01435             RETLW  .70
+0471   3446           01436             RETLW  .70
+0472   3446           01437             RETLW  .70
+0473   3447           01438             RETLW  .71
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 33
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0474   3447           01439             RETLW  .71
+0475   3448           01440             RETLW  .72
+0476   3448           01441             RETLW  .72
+0477   3448           01442             RETLW  .72
+0478   3449           01443             RETLW  .73
+0479   3449           01444             RETLW  .73
+047A   3449           01445             RETLW  .73
+047B   344A           01446             RETLW  .74
+047C   344A           01447             RETLW  .74
+047D   344B           01448             RETLW  .75
+047E   344B           01449             RETLW  .75
+047F   344B           01450             RETLW  .75
+0480   344C           01451             RETLW  .76
+0481   344C           01452             RETLW  .76
+0482   344C           01453             RETLW  .76
+0483   344D           01454             RETLW  .77
+0484   344D           01455             RETLW  .77
+0485   344D           01456             RETLW  .77
+0486   344E           01457             RETLW  .78
+0487   344E           01458             RETLW  .78
+0488   344E           01459             RETLW  .78
+0489   344E           01460             RETLW  .78
+048A   344F           01461             RETLW  .79
+048B   344F           01462             RETLW  .79
+048C   344F           01463             RETLW  .79
+048D   3450           01464             RETLW  .80
+048E   3450           01465             RETLW  .80
+048F   3450           01466             RETLW  .80
+0490   3451           01467             RETLW  .81
+0491   3451           01468             RETLW  .81
+0492   3451           01469             RETLW  .81
+0493   3452           01470             RETLW  .82
+0494   3452           01471             RETLW  .82
+0495   3452           01472             RETLW  .82
+0496   3452           01473             RETLW  .82
+0497   3453           01474             RETLW  .83
+0498   3453           01475             RETLW  .83
+0499   3453           01476             RETLW  .83
+049A   3454           01477             RETLW  .84
+049B   3454           01478             RETLW  .84
+049C   3455           01479             RETLW  .85
+049D   3455           01480             RETLW  .85
+049E   3455           01481             RETLW  .85
+049F   3455           01482             RETLW  .85
+04A0   3455           01483             RETLW  .85
+04A1   3455           01484             RETLW  .85
+04A2   3456           01485             RETLW  .86
+04A3   3456           01486             RETLW  .86
+04A4   3456           01487             RETLW  .86
+04A5   3457           01488             RETLW  .87
+04A6   3457           01489             RETLW  .87
+04A7   3457           01490             RETLW  .87
+04A8   3458           01491             RETLW  .88
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 34
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+04A9   3458           01492             RETLW  .88
+04AA   3458           01493             RETLW  .88
+04AB   3458           01494             RETLW  .88
+04AC   3458           01495             RETLW  .88
+04AD   3459           01496             RETLW  .89
+04AE   3459           01497             RETLW  .89
+04AF   3459           01498             RETLW  .89
+04B0   3459           01499             RETLW  .89
+04B1   3459           01500             RETLW  .89
+04B2   3459           01501             RETLW  .89
+04B3   345A           01502             RETLW  .90
+04B4   345A           01503             RETLW  .90
+04B5   345B           01504             RETLW  .91
+04B6   345B           01505             RETLW  .91
+04B7   345B           01506             RETLW  .91
+04B8   345B           01507             RETLW  .91
+04B9   345C           01508             RETLW  .92
+04BA   345C           01509             RETLW  .92
+04BB   345C           01510             RETLW  .92
+04BC   345C           01511             RETLW  .92
+04BD   345C           01512             RETLW  .92
+04BE   345D           01513             RETLW  .93
+04BF   345D           01514             RETLW  .93
+04C0   345D           01515             RETLW  .93
+04C1   345D           01516             RETLW  .93
+04C2   345E           01517             RETLW  .94
+04C3   345E           01518             RETLW  .94
+04C4   345E           01519             RETLW  .94
+04C5   345E           01520             RETLW  .94
+04C6   345E           01521             RETLW  .94
+04C7   345F           01522             RETLW  .95
+04C8   345F           01523             RETLW  .95
+04C9   345F           01524             RETLW  .95
+04CA   345F           01525             RETLW  .95
+04CB   3460           01526             RETLW  .96
+04CC   3460           01527             RETLW  .96
+04CD   3460           01528             RETLW  .96
+04CE   3460           01529             RETLW  .96
+04CF   3461           01530             RETLW  .97
+04D0   3461           01531             RETLW  .97
+04D1   3461           01532             RETLW  .97
+04D2   3461           01533             RETLW  .97
+04D3   3461           01534             RETLW  .97
+04D4   3462           01535             RETLW  .98
+04D5   3462           01536             RETLW  .98
+04D6   3462           01537             RETLW  .98
+04D7   3462           01538             RETLW  .98
+04D8   3463           01539             RETLW  .99
+04D9   3463           01540             RETLW  .99
+04DA   3463           01541             RETLW  .99
+04DB   3463           01542             RETLW  .99
+04DC   3464           01543             RETLW  .100
+04DD   3464           01544             RETLW  .100
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 35
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+04DE   3464           01545             RETLW  .100
+04DF   3464           01546             RETLW  .100
+04E0   3464           01547             RETLW  .100
+  000000DF            01548 FSD         EQU         .223 ;fsd level 
+                      01549             
+0780                  01550             ORG     0X780       ;high endurance flash
+0780   3402           01551 FPRTAB      RETLW   0X02        ;PREF table store in HEF
+0781   3402           01552             RETLW   0X02
+0782   344B           01553             RETLW   .75
+                      01554             END                       ; directive 'end of program'
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ABBAFG                            00000000
+ADCCH                             00000006
+ADINT                             00000004
+ALINH                             00000020
+ALINL                             00000021
+ANVAL                             00000026
+ANVTAB                            0000003C
+ARINH                             00000022
+ARINL                             00000023
+AUXIND                            0000002D
+BOFFVL                            00000028
+BOFFVR                            0000002A
+BONVL                             00000027
+BONVR                             00000029
+CENTREDOT                         000000F5
+CLRALL                            000000E8
+CLRBARS                           000000F0
+CLRDABS                           000000EC
+CLRPEAK                           0000019E
+CONTROL                           0000007F
+DCFLTL                            000001B9
+DCFLTR                            000001CF
+DCFTL0                            00000030
+DCFTL1                            00000031
+DCFTL2                            00000032
+DCFTR0                            00000034
+DCFTR1                            00000035
+DCFTR2                            00000036
+DCOSL                             00000038
+DCOSR                             00000039
+DCPOSL                            000001C1
+DCPOSR                            000001D7
+DCSETL                            000001C7
+DCSETR                            000001DD
+DECCNT                            00000030
+DECOPT                            00000041
+DECTAB                            0000017F
+DFCNTL                            00000033
+DFCNTR                            00000037
+DISOPT                            00000168
+DISPORT                           00000000
+DISPPB                            00000113
+DODECAY                           00000173
+DOFRM                             000001EF
+DOFRMSLOT                         000000AD
+DOHLD                             000000DF
+DOHMSC                            000001E5
+DOMODE                            000000C2
+DOPRESS                           000000D6
+DOSWITCH                          000000CE
+DOTVL                             0000002B
+DOTVR                             0000002C
+EVNFRM                            00000207
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 37
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+FLCLR                             00000318
+FLREAD                            0000030C
+FLWRITE                           0000032B
+FPRTAB                            00000780
+FRMCNT                            00000035
+FRMNO                             00000025
+FRMTMR                            00000074
+FSD                               000000DF
+GRD17                             00000023
+GRD810                            00000024
+GRDTABH                           00000064
+GRDTABL                           00000050
+HMSEC                             00000034
+IND1                              00000007
+IND2                              00000006
+IND3                              00000005
+IND4                              00000004
+IND5                              00000003
+INIPAB29                          0000022B
+INITUART                          000002E8
+INTEMP0                           00000072
+INTEMP1                           00000073
+INTT0                             00000032
+INTXIT                            0000003B
+LATCH                             00000000
+LIN                               00000000
+LOOP                              0000033B
+MAIN                              00000078
+MAINLP                            000000A5
+MANCLR                            000001AF
+MANPKCLR                          0000010A
+MODE                              00000031
+NEWPL                             00000030
+NEWPR                             0000001F
+NOREF                             00000203
+NOREF1                            0000024D
+OBTAB                             0000016E
+OVERL                             0000012E
+OVERR                             00000149
+PA0A                              00000002
+PA0B                              00000003
+PA1A                              00000006
+PA1B                              00000007
+PA29                              00000022
+PAB00                             00000000
+PAB01                             00000021
+PAB29LP                           00000226
+PB0A                              00000000
+PB0B                              00000001
+PB1A                              00000004
+PB1B                              00000005
+PB29                              00000020
+PEAKBAR                           0000010C
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 38
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PHOTAB                            000001B4
+PKCLR                             000001A7
+PKHOPT                            00000040
+PKHTMR                            00000033
+PKLEFT                            00000119
+PKOFF                             000001AD
+PKRIGHT                           00000134
+PLINH                             00000024
+PLINL                             00000025
+POSLEFT                           0000002C
+POSRIGHT                          0000001B
+PREFS                             00000040
+PRFSAVE                           00000307
+PRINH                             00000026
+PRINL                             00000027
+PTEMP                             0000002F
+RAMPDWN                           00000000
+REFCNT                            00000032
+REFEN                             00000007
+REFLVL                            00000042
+REFVL                             0000002E
+REFVR                             0000002F
+RIN                               00000000
+RSMODE                            000000CC
+SAVELCH                           00000022
+SCALETAB                          00000400
+SCLK                              00000000
+SDATA                             00000000
+SETAB                             0000021F
+SETAVAL                           000002E4
+SETDECAY                          00000150
+SETGRID                           000002DC
+SETPAB0A                          00000273
+SETPAB0B                          000002B9
+SETPAB1A                          00000250
+SETPAB1B                          00000296
+SETPAB29                          00000223
+SETPKCL                           00000185
+SETTIMER                          000001EB
+SHFT                              00000211
+SHFTOUT                           000002F6
+START_WRITE                       00000349
+SWITCH                            00000000
+SWTDBT                            00000037
+SWTDBV                            00000036
+SWTLP                             00000003
+SWTMODE                           00000001
+SWTSP                             00000002
+SYNCLP                            000000A7
+TEMP0                             00000070
+TEMP1                             00000071
+TSTODD                            00000212
+TSTPLP                            00000198
+MPASM 5.84  /MEDIA/BILL/DATA/ASM/PIC/MP_PROJ   11-23-2020  21:51:47         PAGE 39
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TSTSLP                            00000162
+WAITLST                           00000300
+WAITTXF                           000002FE
+XITPL                             00000032
+XITPR                             00000032
+__12F1572                         00000001
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : X---XXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+00C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0100 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0140 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0180 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+01C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0200 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0240 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0280 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+02C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0300 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0340 : XXXXXXXXXXXXXXXX XXXX------------ ---------------- ----------------
+0400 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0440 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0480 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+04C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX X--------------- ----------------
+0780 : XXX------------- ---------------- ---------------- ----------------
+
+All other memory blocks unused.
+
+Program Memory Words Used:  1077
+Program Memory Words Free:   971
+
+
+Errors   :   256
+Warnings :     0 reported,     0 suppressed
+Messages :     0 reported,     0 suppressed
+
+

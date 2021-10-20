@@ -1,0 +1,2044 @@
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;**********************************************************************
+                      00002 ;                                                                     *
+                      00003 ;    Filename: VFD Main.asm                                           *
+                      00004 ;    Date:     21/12/2017                                            *
+                      00005 ;    File Version:      0.01                                          *
+                      00006 ;                                                                     *
+                      00007 ;    Author:             W.K.Todd                                     *
+                      00008 ;    Company:                                                         *
+                      00009 ;                                                                     * 
+                      00010 ;                                                                     *
+                      00011 ;**********************************************************************
+                      00012 ;                                                                     *
+                      00013 ;    Files Required: P16F1572.INC                                      *
+                      00014 ;                                                                     *
+                      00015 ;**********************************************************************
+                      00016 
+                      00017 ;**********************************************************************
+                      00018 ; The display is multiplexed one frame at a time, by taking a grid
+                      00019 ; (or pair of grids) high (output 1) and the anodes low for off or high for on
+                      00020 ;
+                      00021 ; In order to ensure even brightness at the ends of  the grids, the 
+                      00022 ; top and bottom anode segments are illuminated separately with
+                      00023 ; the two adjacent grids on.
+                      00024 ; 
+                      00025 ; A complete scan is made every 19 frames.
+                      00026 ; 
+                      00027 ;--------------------------------------------------------------------
+                      00028 
+                      00029 ; Many possible display modes are possible:
+                      00030 ;       i) for a conventional bar - 0 at the bottom 100 at the top set 'bar on value' (bonvl & bonvr)
+                      00031 ;          and 'dot value' (DotVl & DotVr) to zero. Then change the Bar off values (BoffVl & BoffVr)
+                      00032 ;       
+                      00033 ;       ii) for an inverted bar  - 0 at the top 100 at the bottom. Set 'bar off value' (boffvl & boffvr)
+                             to 100
+                      00034 ;          and 'dot value' (DotVl & DotVr) to zero. Then change the Bar on values (BoffVl & BoffVr)
+                      00035 ;
+                      00036 ;   iii) for trend meter with zero in the middle - For  values < 50 should set Bar on value (with Boff f
+                            ixed at 50) 
+                      00037 ;               For values > 50  Bar off value should be set to 50 + value
+                      00038 
+                      00039 ;       iv) for dot display simply set dot values (dotvl & dotvr)
+                      00040 
+                      00041 ;       v) a centre line for the dot display can be set using Bar on and bar off set to 50
+                      00042 
+                      00043 ;   vi) bar and dot modes can be combined to show level bar with peak dot
+                      00044 
+                      00045 ;  Plus many more :)
+                      00046 ;--------------------------------------------------------------------------------------------------
+                      00047 
+                      00048 
+                      00049 ; PIC12F1572 Configuration Bit Settings
+                      00050 
+                      00051 ; ASM source line config statements
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00052 
+                      00053 #INCLUDE "p12F1572.inc"
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ; Build date : Dec 08 2015
+                      00005 ;  MPASM PIC12F1572 processor include
+                      00006 ; 
+                      00007 ;  (c) Copyright 1999-2015 Microchip Technology, All rights reserved
+                      00008 ;==========================================================================
+                      00009 
+                      01601         LIST
+                      00054 
+                      00055 ; CONFIG1
+                      00056 ; __config 0xF9A7
+8007   39A7           00057  __CONFIG _CONFIG1, _FOSC_ECH & _WDTE_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOREN_OFF & _CLKOUTEN_O
+                            FF
+                      00058 ; CONFIG2
+                      00059 ; __config 0xFFFF
+8008   3FFF           00060  __CONFIG _CONFIG2, _WRT_OFF & _PLLEN_ON & _STVREN_ON & _BORV_LO & _LPBOREN_OFF & _LVP_ON
+                      00061 
+                      00062 
+                      00063 ;***** VARIABLE DEFINITIONS
+  0000007D            00064 W_TEMP          EQU     0X7D            ; variable used for context saving
+  0000007E            00065 STATUS_TEMP     EQU     0X7E            ; variable used for context saving
+  0000007F            00066 PCLATH_TEMP     EQU     0X7F            ; variable used for context saving
+                      00067 
+                      00068 
+  0000000C            00069 DISPORT         EQU             PORTA
+                      00070 ;Bit values for Display control outputs 
+  00000004            00071 SDATA           EQU             RA4     ;use alt pin APFCON             
+  00000005            00072 SCLK            EQU             RA5
+  00000003            00073 LATCH           EQU             RA3
+                      00074 ;Analogue inputs 
+  00000000            00075 LIN             EQU             RA0         ;Left analogue input
+  00000001            00076 RIN             EQU             RA1             
+  00000002            00077 SWITCH          EQU             RA2         ;switch resisters
+                      00078 
+                      00079 ; five bytes are required to hold the 40 display bits
+  00000020            00080 PB29            EQU             0X20            ;PB 9-2 
+  00000021            00081 PAB01           EQU             0X21            ;PA1b,PA1a,PB1b,Pb1a,PA0b,PA0b,PB0b,Pb0a
+  00000022            00082 PA29            EQU             0X22            ;PA 9-2
+  00000023            00083 GRD17           EQU             0X23            ;Grid 7 - 0 ,PAB00
+  00000024            00084 GRD810          EQU             0X24            ;LED 6-10, Grid 10 - 8
+                      00085 ;bytes used by display routine to keep place
+  00000025            00086 FRMNO           EQU             0X25            ;Bits 0-5 Current frame number [0=bottom 19=top], bit6-7
+  00000026            00087 ANVAL           EQU             0X26            ;Current anode value [1-100]
+                      00088 
+                      00089 ;bit value for the display bytes
+  00000007            00090 IND1            EQU             7                       ;Aux LED1 (GRD810.7)
+  00000006            00091 IND2            EQU             6                       ;Aux LED2 (GRD810.6)
+  00000005            00092 IND3            EQU             5                       ;Aux LED3 (GRD810.5)
+  00000004            00093 IND4            EQU             4                       ;Aux LED4 (GRD810.4)
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000003            00094 IND5            EQU             3                       ;Aux LED5 (GRD810.3)
+  00000000            00095 PAB00           EQU             0                       ;Bottom pair of segments (Grd17.0)
+  00000000            00096 ABBAFG          EQU             0                       ;flag to determine if this pair is ab or ba
+                      00097 
+  00000007            00098 PA1B            EQU             7                       ;anode bits
+  00000006            00099 PA1A            EQU             6
+  00000005            00100 PB1B            EQU             5
+  00000004            00101 PB1A            EQU             4
+  00000003            00102 PA0B            EQU             3
+  00000002            00103 PA0A            EQU             2
+  00000001            00104 PB0B            EQU             1
+  00000000            00105 PB0A            EQU             0
+                      00106 
+                      00107 ;values for bar and dot display 0-100 [0=off, 1= bottom, 100= top]
+                      00108 ;set these bytes from your code to light display
+  00000027            00109 BONVL           EQU             0X27            ;Bar on value left
+  00000028            00110 BOFFVL          EQU             0X28            ;Bar off value left
+  00000029            00111 BONVR           EQU             0X29            ;Bar on value right
+  0000002A            00112 BOFFVR          EQU             0X2A            ;Bar off value right
+  0000002B            00113 DOTVL           EQU             0X2B            ;Dot on value left
+  0000002C            00114 DOTVR           EQU             0X2C            ;Dot on value right
+  0000002D            00115 AUXIND          EQU             0X2D            ;aux indicators and PAB00 
+                      00116 
+                      00117 ;demo control variables
+  0000002E            00118 TESTVAL         EQU             0X2E            ;value is ramped up to 100 then down to 0 in a loop
+  0000002F            00119 MODE            EQU             0X2F            ;display mode changes after each ramp
+  00000030            00120 CONTROL         EQU             0X30            ;control bits
+                      00121 ;contol bits
+  00000000            00122 RAMPDWN         EQU             0                       ;count up/dwn flag
+                      00123 
+                      00124 
+                      00125 
+  00000070            00126 TEMP0           EQU             0X70            ;temp bytes for normal routines
+  00000071            00127 TEMP1           EQU             0X71
+  00000072            00128 RANDLO          EQU             0X72            ;random shift reg
+  00000073            00129 RANDHI          EQU             0X73
+  00000079            00130 INTEMP0         EQU             0X79            ;temp bytes for interrupt routines
+  0000007A            00131 INTEMP1         EQU             0X7A
+                      00132 
+                      00133 
+                      00134 ;**********************************************************************
+                      00135                         ORG     0X000             ; processor reset vector
+                      00136 
+                      00137                         ;nop
+Message[312]: Page or Bank selection not needed for this device.  No code generated.
+                      00138                         PAGESEL MAIN
+0000   2???           00139                         GOTO    MAIN              ; go to beginning of program
+                      00140 
+                      00141 
+                      00142                         ORG     0X004             ; interrupt vector location
+                      00143 
+0004   00FD           00144                         MOVWF   W_TEMP            ; save off current W register contents
+0005   0803           00145                         MOVF    STATUS,W          ; move status register into W register
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0006   00FE           00146                         MOVWF   STATUS_TEMP       ; save off contents of STATUS register
+0007   080A           00147                         MOVF    PCLATH,W                ; move pclath register into w register
+0008   00FF           00148                         MOVWF   PCLATH_TEMP              ; save off contents of PCLATH register
+                      00149 
+                      00150 ; isr code can go here or be located as a call subroutine elsewhere
+0009   1D0B           00151                         BTFSS   INTCON,T0IF                     ;test timer 0 interrupt 
+000A   2???           00152                         GOTO    INTXIT
+000B   110B           00153                         BCF             INTCON,T0IF                     ;clear the interrupt flag
+000C   2???           00154                         CALL    DOFRM
+000D   2???           00155                         CALL    SETTIMER
+                      00156 
+000E                  00157 INTXIT: 
+000E   087F           00158                         MOVF    PCLATH_TEMP,W     ; retrieve copy of PCLATH register
+000F   008A           00159                         MOVWF   PCLATH                   ; restore pre-isr PCLATH register contents
+0010   087E           00160                         MOVF    STATUS_TEMP,W     ; retrieve copy of STATUS register
+0011   0083           00161                         MOVWF   STATUS            ; restore pre-isr STATUS register contents
+0012   0EFD           00162                         SWAPF   W_TEMP,F
+0013   0E7D           00163                         SWAPF   W_TEMP,W          ; restore pre-isr W register contents
+0014   0009           00164                         RETFIE                    ; return from interrupt
+                      00165 
+                      00166 ;==========================================< Tables >=======================================
+                      00167 ;------Anode value table
+                      00168 ;This holds the initial value for the anodes in the current frame (faster than multiplying on the fly) 
+0015   0782           00169 ANVTAB          ADDWF   PCL,F
+0016   3401           00170                         RETLW   .1              ;G1             1-9
+0017   340A           00171                         RETLW   .10             ;G2-1   10,11
+0018   340C           00172                         RETLW   .12             ;G2             12-19
+0019   3414           00173                         RETLW   .20             ;G3-2   20,21
+001A   3416           00174                         RETLW   .22             ;G3             22-29
+001B   341E           00175                         RETLW   .30             ;G4-3   30,31
+001C   3420           00176                         RETLW   .32             ;G4
+001D   3428           00177                         RETLW   .40             ;G4-5
+001E   342A           00178                         RETLW   .42             ;G5
+001F   3432           00179                         RETLW   .50             ;G5-6
+0020   3434           00180                         RETLW   .52             ;G6
+0021   343C           00181                         RETLW   .60             ;G6-7
+0022   343E           00182                         RETLW   .62             ;G7
+0023   3446           00183                         RETLW   .70             ;G7-8
+0024   3448           00184                         RETLW   .72             ;G8
+0025   3450           00185                         RETLW   .80             ;G8-9
+0026   3452           00186                         RETLW   .82             ;G9
+0027   345A           00187                         RETLW   .90             ;G9-10
+0028   345C           00188                         RETLW   .92             ;G10
+                      00189 
+                      00190 ;------Grid tables------
+                      00191 ; These hold the grid setup value for each frame (high and low bytes).
+                      00192 ;GrdTabL bit 0 indicates an ab or ba frame pair
+                      00193  
+0029   0782           00194 GRDTABL         ADDWF   PCL,F
+002A   3402           00195                         RETLW   0X02    ;G1
+002B   3407           00196                         RETLW   0X07    ;G2-1 AB
+002C   3404           00197                         RETLW   0X04    ;G2
+002D   340C           00198                         RETLW   0X0C    ;G3-2 BA
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+002E   3408           00199                         RETLW   0X08    ;G3
+002F   3419           00200                         RETLW   0X19    ;G4-3 AB
+0030   3410           00201                         RETLW   0X10    ;G4
+0031   3430           00202                         RETLW   0X30    ;G4-5 BA
+0032   3420           00203                         RETLW   0X20    ;G5
+0033   3461           00204                         RETLW   0X61    ;G5-6 AB
+0034   3440           00205                         RETLW   0X40    ;G6
+0035   34C0           00206                         RETLW   0XC0    ;G6-7 BA
+0036   3480           00207                         RETLW   0X80    ;G7
+0037   3481           00208                         RETLW   0X81    ;G7-8 AB
+0038   3400           00209                         RETLW   0X00    ;G8
+0039   3400           00210                         RETLW   0X00    ;G8-9 BA
+003A   3400           00211                         RETLW   0X00    ;G9
+003B   3401           00212                         RETLW   0X01    ;G9-10 AB
+003C   3400           00213                         RETLW   0X00    ;G10
+                      00214         
+003D   0782           00215 GRDTABH         ADDWF   PCL,F
+003E   3400           00216                         RETLW   0X00    ;G1
+003F   3400           00217                         RETLW   0X00    ;G2-1
+0040   3400           00218                         RETLW   0X00    ;G2
+0041   3400           00219                         RETLW   0X00    ;G3-2
+0042   3400           00220                         RETLW   0X00    ;G3
+0043   3400           00221                         RETLW   0X00    ;G4-3
+0044   3400           00222                         RETLW   0X00    ;G4
+0045   3400           00223                         RETLW   0X00    ;G4-5
+0046   3400           00224                         RETLW   0X00    ;G5
+0047   3400           00225                         RETLW   0X00    ;G5-6
+0048   3400           00226                         RETLW   0X00    ;G6
+0049   3400           00227                         RETLW   0X00    ;G6-7
+004A   3400           00228                         RETLW   0X00    ;G7
+004B   3401           00229                         RETLW   0X01    ;G7-8
+004C   3401           00230                         RETLW   0X01    ;G8
+004D   3403           00231                         RETLW   0X03    ;G8-9
+004E   3402           00232                         RETLW   0X02    ;G9
+004F   3406           00233                         RETLW   0X06    ;G9-10
+0050   3404           00234                         RETLW   0X04    ;G10
+                      00235 
+                      00236 ;-----------------------------------------< end of tables >-----------------------------------
+                      00237 
+                      00238 
+                      00239 ;=======================================< Start of main code >===============================
+0051                  00240 MAIN
+                      00241 ;start
+                      00242                         ;initialise ports
+0051   0023           00243                         BANKSEL         ANSELA  ;select the correct bank
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0052   018C           00244                         CLRF            ANSELA  ;clear the analog selects (all digital inputs)
+0053   0021           00245                         BANKSEL         TRISA
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0054   018C           00246                         CLRF            TRISA   ;port C all outputs
+                      00247 
+                      00248 
+                      00249                         ;initialise timer
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0055   0021           00250                         BANKSEL         OPTION_REG
+0056   3001           00251                         MOVLW           B'00000001'             ;Timer0 via 1:4 prescaler 
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0057   0095           00252                         MOVWF           OPTION_REG
+0058   2???           00253                         CALL            SETTIMER                
+                      00254                 
+                      00255                         
+                      00256                         ;initialise interrupts
+0059   0020           00257                         BANKSEL         INTCON
+005A   30A0           00258                         MOVLW           B'10100000'             ;enable TOIE - disable interrupt if call
+                            ing dofrm from mainloop
+005B   008B           00259                         MOVWF           INTCON
+Message[312]: Page or Bank selection not needed for this device.  No code generated.
+                      00260                         PAGESEL         MAINLP
+                      00261                         
+                      00262 
+                      00263                         ;seed random gene
+005C   3030           00264                         MOVLW           0X30
+005D   00F3           00265                         MOVWF           RANDHI
+005E   3045           00266                         MOVLW           0X45
+005F   00F2           00267                         MOVWF           RANDLO
+                      00268                         ;clear variables
+0060   01A7           00269                         CLRF            BONVL
+0061   01A8           00270                         CLRF            BOFFVL
+0062   01AB           00271                         CLRF            DOTVL
+0063   01A9           00272                         CLRF            BONVR
+0064   01AA           00273                         CLRF            BOFFVR
+0065   01AC           00274                         CLRF            DOTVR
+0066   01AD           00275                         CLRF            AUXIND
+                      00276 
+0067   01AF           00277                         CLRF            MODE
+0068   01B0           00278                         CLRF            CONTROL
+0069   01AE           00279                         CLRF            TESTVAL
+                      00280 ;==================================< main loop >===================================
+                      00281 ;
+006A   0BF0           00282 MAINLP          DECFSZ          TEMP0,F
+006B   2???           00283                         GOTO            MAINLP          ;delay to slow main loop
+006C   3080           00284                         MOVLW           0X80
+006D   00F0           00285                         MOVWF           TEMP0
+                      00286                         ;call           dofrm           ;doframe can be called here instead of interrupt
+                      00287         
+006E   0BF1           00288                         DECFSZ          TEMP1,F
+006F   2???           00289                         GOTO            MAINLP
+0070   3010           00290                         MOVLW           0X10
+0071   00F1           00291                         MOVWF           TEMP1
+                      00292 
+0072   2???           00293                         CALL            RAMP            ;Ramp testval up and down
+0073   2???           00294                         CALL            RANDOM16        ;randomise 
+                      00295 
+0074   2???           00296                         CALL            DOMODE          ;do demo display mode
+                      00297 
+0075   2???           00298                         GOTO            MAINLP
+                      00299 ;--------------------------------------------------------------------------------
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0076                  00300 RANDOM16        ;psuedo random routine
+0076   0D73           00301                          RLF            RANDHI,W
+0077   0673           00302                          XORWF          RANDHI,W
+                      00303                          ;rlf           WREG, F ; carry bit = xorwf(Q15,14)
+0078   0EF3           00304                          SWAPF          RANDHI, F
+0079   0E72           00305                          SWAPF          RANDLO,W
+                      00306                          ;rlf           WREG, F
+007A   0673           00307                          XORWF          RANDHI,W ; LSB = xorwf(Q12,Q3)
+007B   0EF3           00308                          SWAPF          RANDHI, F
+007C   3901           00309                          ANDLW          0X01
+007D   0DF2           00310                          RLF            RANDLO, F
+007E   06F2           00311                          XORWF          RANDLO, F
+007F   0DF3           00312                          RLF            RANDHI, F
+0080   0008           00313                          RETURN
+                      00314 
+0081                  00315 RAMP            ;ramp test value up to 100 then ramp down to 0 in a loop
+0081   1830           00316                         BTFSC   CONTROL,RAMPDWN
+0082   2???           00317                         GOTO    RAMPDN
+0083   0AAE           00318                         INCF    TESTVAL,F
+0084   082E           00319                         MOVF    TESTVAL,W
+0085   3A64           00320                         XORLW   .100
+0086   1D03           00321                         BTFSS   STATUS,Z
+0087   0008           00322                         RETURN
+0088   1430           00323                         BSF             CONTROL,RAMPDWN
+0089   0008           00324                         RETURN
+                      00325 
+008A   0BAE           00326 RAMPDN          DECFSZ  TESTVAL,F
+008B   0008           00327                         RETURN
+008C   1030           00328                         BCF             CONTROL,RAMPDWN
+008D   0AAF           00329                         INCF    MODE,F
+008E   0008           00330                         RETURN
+                      00331 
+                      00332 ;---------------< demo display modes >-----------------------------------------------
+008F                  00333 DOMODE:
+008F   0C2F           00334                         RRF                     MODE,W                  
+0090   3907           00335                         ANDLW           0X07            
+0091   0782           00336                         ADDWF           PCL,F
+0092   2???           00337                         GOTO            CONVBAR         ;do conventional bar display
+0093   2???           00338                         GOTO            INDBAR
+0094   2???           00339                         GOTO            INVBAR          ;do inverted bar
+0095   2???           00340                         GOTO            TRENDBAR        ;do trend bar
+0096   2???           00341                         GOTO            SIMPLEDOT       ;do dot display
+0097   2???           00342                         GOTO            CENTREDOT       ;dot display with centre line
+0098   2???           00343                         GOTO            PEAKBAR         ;bar with peak dot
+0099   2???           00344                         GOTO            PEAKBAR         ;bar with peak dot                      
+                      00345 
+009A   01AF           00346                         CLRF            MODE
+009B   0008           00347                         RETURN
+                      00348 
+                      00349 ;Conventional bar
+009C                  00350 CONVBAR:
+009C   01A7           00351                         CLRF            BONVL   ;clear value
+009D   01A9           00352                         CLRF            BONVR
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+009E   01AB           00353                         CLRF            DOTVL
+009F   01AC           00354                         CLRF            DOTVR
+00A0   142D           00355                         BSF                     AUXIND,PAB00            ; light the bottom pair
+00A1   082E           00356                         MOVF            TESTVAL,W
+00A2   00A8           00357                         MOVWF           BOFFVL
+00A3   00AA           00358                         MOVWF           BOFFVR
+00A4   0008           00359                         RETURN
+                      00360 
+                      00361 ;Indpendant left right
+00A5                  00362 INDBAR:
+00A5   01A7           00363                         CLRF            BONVL   ;clear value
+00A6   01A9           00364                         CLRF            BONVR
+00A7   01AB           00365                         CLRF            DOTVL
+00A8   01AC           00366                         CLRF            DOTVR
+00A9   142D           00367                         BSF                     AUXIND,PAB00            ; light the bottom pair
+00AA   082E           00368                         MOVF            TESTVAL,W
+00AB   00A8           00369                         MOVWF           BOFFVL
+00AC   3C64           00370                         SUBLW           .100            
+00AD   00AA           00371                         MOVWF           BOFFVR
+00AE   0008           00372                         RETURN
+                      00373 
+                      00374 ;inverted bar 
+00AF   3064           00375 INVBAR:         MOVLW           .100
+00B0   00A8           00376                         MOVWF           BOFFVL
+00B1   00AA           00377                         MOVWF           BOFFVR                  ;bar should be on at the top            
+                                    
+00B2   102D           00378                         BCF                     AUXIND,PAB00    ;switch off the bottom pair
+00B3   01AB           00379                         CLRF            DOTVL
+00B4   01AC           00380                         CLRF            DOTVR
+00B5   082E           00381                         MOVF            TESTVAL,W               
+00B6   3C64           00382                         SUBLW           .100            ;to make bar start at the right end for demo
+00B7   00A7           00383                         MOVWF           BONVL                   
+00B8   00A9           00384                         MOVWF           BONVR
+00B9   0008           00385                         RETURN
+                      00386 
+                      00387 ;trend bar - centred on zero
+00BA                  00388 TRENDBAR:
+00BA   102D           00389                         BCF                     AUXIND,PAB00    ;switch off the bottom pair
+00BB   01AB           00390                         CLRF            DOTVL
+00BC   01AC           00391                         CLRF            DOTVR   
+00BD   082E           00392                         MOVF            TESTVAL,W       
+00BE   3C32           00393                         SUBLW           .50
+00BF   1C03           00394                         BTFSS           STATUS,C
+00C0   2???           00395                         GOTO            TRDPOS
+00C1   082E           00396                         MOVF            TESTVAL,W
+00C2   00A7           00397                         MOVWF           BONVL                   
+00C3   00A9           00398                         MOVWF           BONVR
+00C4   3032           00399                         MOVLW           .50
+00C5   00A8           00400                         MOVWF           BOFFVL
+00C6   00AA           00401                         MOVWF           BOFFVR
+00C7   0008           00402                         RETURN          
+                      00403 
+00C8   082E           00404 TRDPOS          MOVF            TESTVAL,W       ;for values < 50 
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00C9   00A8           00405                         MOVWF           BOFFVL
+00CA   00AA           00406                         MOVWF           BOFFVR                  
+00CB   3032           00407                         MOVLW           .50     
+00CC   00A7           00408                         MOVWF           BONVL                   
+00CD   00A9           00409                         MOVWF           BONVR
+00CE   0008           00410                         RETURN
+                      00411 
+                      00412 ;dot display 
+00CF   01A7           00413 SIMPLEDOT       CLRF            BONVL
+00D0   01A9           00414                         CLRF            BONVR
+00D1   01A8           00415                         CLRF            BOFFVL
+00D2   01AA           00416                         CLRF            BOFFVR
+00D3   102D           00417                         BCF                     AUXIND,PAB00    ;switch off the bottom pair     
+00D4   082E           00418                         MOVF            TESTVAL,W       
+00D5   00AB           00419                         MOVWF           DOTVL
+00D6   3C64           00420                         SUBLW           .100
+00D7   00AC           00421                         MOVWF           DOTVR           
+00D8   0008           00422                         RETURN
+00D9                  00423 CENTREDOT:
+00D9   3032           00424                         MOVLW           .50
+00DA   00A7           00425                         MOVWF           BONVL
+00DB   00A9           00426                         MOVWF           BONVR
+00DC   3033           00427                         MOVLW           .51
+00DD   00A8           00428                         MOVWF           BOFFVL
+00DE   00AA           00429                         MOVWF           BOFFVR
+00DF   102D           00430                         BCF                     AUXIND,PAB00    ;switch off the bottom pair     
+00E0   082E           00431                         MOVF            TESTVAL,W       
+00E1   00AB           00432                         MOVWF           DOTVL
+00E2   00AC           00433                         MOVWF           DOTVR           
+00E3   0008           00434                         RETURN
+                      00435 
+00E4   01A7           00436 PEAKBAR:        CLRF    BONVL
+00E5   01A9           00437                         CLRF    BONVR
+00E6   03A8           00438                         DECF    BOFFVL,F        ;do decay
+00E7   03AA           00439                         DECF    BOFFVR,F
+00E8   082E           00440                         MOVF    TESTVAL,W
+00E9   1D03           00441                         BTFSS   STATUS,Z        ;clear peak on second run
+00EA   2???           00442                         GOTO    PKRND
+00EB   01AB           00443                         CLRF    DOTVL
+00EC   01AC           00444                         CLRF    DOTVR
+                      00445                 
+00ED   0873           00446 PKRND           MOVF    RANDHI,W                ;get random-ish value
+00EE   393F           00447                         ANDLW   0X3F            ;0-63
+00EF   0228           00448                         SUBWF   BOFFVL,W        ;compare with current peak
+00F0   1803           00449                         BTFSC   STATUS,C
+00F1   2???           00450                         GOTO    PKRIGHT
+00F2   0873           00451                         MOVF    RANDHI,W
+00F3   393F           00452                         ANDLW   0X3F            ;0-63
+00F4   00A8           00453                         MOVWF   BOFFVL          ;set new peak
+                      00454 
+                      00455 
+00F5   0873           00456                         MOVF    RANDHI,W                ;get random-ish value
+00F6   393F           00457                         ANDLW   0X3F            ;0-63
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00F7   022B           00458                         SUBWF   DOTVL,W ;compare with current peak
+00F8   1803           00459                         BTFSC   STATUS,C
+00F9   2???           00460                         GOTO    PKRIGHT
+00FA   0873           00461                         MOVF    RANDHI,W
+00FB   393F           00462                         ANDLW   0X3F            ;0-63
+00FC   00AB           00463                         MOVWF   DOTVL
+                      00464 
+00FD   0872           00465 PKRIGHT         MOVF    RANDLO,W                ;get random-ish value
+00FE   393F           00466                         ANDLW   0X3F
+00FF   022A           00467                         SUBWF   BOFFVR,W        ;compare with current peak
+0100   1803           00468                         BTFSC   STATUS,C
+0101   0008           00469                         RETURN
+0102   0872           00470                         MOVF    RANDLO,W
+0103   393F           00471                         ANDLW   0X3F            ;0-63
+0104   00AA           00472                         MOVWF   BOFFVR          ;set new peak   
+                      00473 
+                      00474 
+0105   0872           00475                         MOVF    RANDLO,W                ;get random-ish value
+0106   393F           00476                         ANDLW   0X3F
+0107   022C           00477                         SUBWF   DOTVR,W ;compare with current peak
+0108   1803           00478                         BTFSC   STATUS,C
+0109   0008           00479                         RETURN
+010A   0872           00480                         MOVF    RANDLO,W
+010B   393F           00481                         ANDLW   0X3F            ;0-63
+010C   00AC           00482                         MOVWF   DOTVR                   ;set new peak                   
+010D   0008           00483                         RETURN
+                      00484                         
+                      00485                         
+                      00486 
+                      00487 ;----------------------------------------------------------------------------------
+                      00488 
+                      00489 
+                      00490 ; remaining code goes here
+                      00491 
+                      00492 
+                      00493 
+                      00494 ;VFD display routines called from timer interrupt or main loop
+                      00495 
+010E                  00496 SETTIMER:                                                       ;used if dofrm is called from interrupt 
+                            only
+010E   0020           00497                         BANKSEL         TMR0
+010F   30C0           00498                         MOVLW           0XC0                    ;frame rate is 19frames * 20 scans/secon
+                            d 
+0110   0095           00499                         MOVWF           TMR0                    ;set timer      
+0111   0008           00500                         RETURN  
+                      00501 
+0112                  00502 DOFRM:
+0112   0AA5           00503                         INCF    FRMNO,F         ;next frame (19 frames numbered 0-18)
+0113   0825           00504                         MOVF    FRMNO,W         ;get frame number and test if >18
+0114   3C12           00505                         SUBLW   .18
+0115   1C03           00506                         BTFSS   STATUS,C
+0116   01A5           00507                         CLRF    FRMNO           ;reset frame number
+                      00508 
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0117   01A0           00509                         CLRF    PB29            ;switch off anodes
+0118   01A1           00510                         CLRF    PAB01
+0119   01A2           00511                         CLRF    PA29
+011A   2???           00512                         CALL    SETGRID         ;set up grids
+011B   2???           00513                         CALL    SETAVAL         ;set initial anode value
+                      00514         
+011C   0825           00515                         MOVF    FRMNO,W         ;test if frame 0/grid1
+011D   1D03           00516                         BTFSS   STATUS,Z
+011E   2???           00517                         GOTO    TSTODD          ;goto test Odd frame. Odd frames have two grids & set PA
+                            B10
+                      00518 
+                      00519 ;do frame 0 - this is a special even frame because it has to test 
+                      00520 ;PAB00, PA1a & PB1a as well as PA2-9 & PB2-9 (PAB29)
+                      00521 
+011F   2???           00522                         CALL    SETPAB1A                ;do anodes PA1a & PB1a
+0120   0AA6           00523                         INCF    ANVAL,F                 ;increment anode value and...
+0121   182D           00524                         BTFSC   AUXIND,PAB00    ;test if bottom segment should be on
+0122   1423           00525                         BSF             GRD17,PAB00
+                      00526 
+0123   2???           00527 EVNFRM          CALL    SETPAB29        ;do anodes PA2-9 & PB2-9
+                      00528 
+0124   0AA6           00529                         INCF    ANVAL,F
+0125   0825           00530                         MOVF    FRMNO,W         ;frame 19 also has to set PA0b & PB0b
+0126   3A12           00531                         XORLW   .18
+0127   1903           00532                         BTFSC   STATUS,Z
+0128   2???           00533                         CALL    SETPAB0B
+                      00534 
+0129   082D           00535                         MOVF    AUXIND,W                ;get LED indicator switches
+012A   39F8           00536                         ANDLW   0XF8
+012B   0424           00537                         IORWF   GRD810,W                ;set output bits        
+012C   00A4           00538                         MOVWF   GRD810
+                      00539 
+012D   2???           00540 SHFT            CALL    SHFTOUT         ;shift output bytes to display
+012E   0008           00541                         RETURN
+                      00542 
+                      00543 
+012F   0825           00544 TSTODD          MOVF    FRMNO,W
+0130   3901           00545                         ANDLW   0X01
+0131   1903           00546                         BTFSC   STATUS,Z
+0132   2???           00547                         GOTO    EVNFRM          ;do even frame output
+                      00548 
+                      00549 ;brightness correcting delay
+0133   304F           00550                         MOVLW   0X4F            ;adjust until all segments look the same brightness
+0134   00F9           00551                         MOVWF   INTEMP0
+0135   0BF9           00552 BCLP            DECFSZ  INTEMP0,F       ;loop here to correct brightness between odd and even frames
+0136   2???           00553                         GOTO    BCLP
+                      00554 
+0137   0825           00555                         MOVF    FRMNO,W         ;this is an odd frame so now test if ab or ba   
+0138   2???           00556                         CALL    GRDTABL         ;get low byte
+0139   3901           00557                         ANDLW   0X01            ;test  abba flag
+013A   1D03           00558                         BTFSS   STATUS,Z        ;w=1=AB  w=0=BA
+013B   2???           00559                         GOTO    SETAB
+                      00560 ;setba
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+013C   2???           00561                         CALL    SETPAB0B        ;do anodes PA0b & PB0b
+013D   0AA6           00562                         INCF    ANVAL,F         ;increment anode value then...
+013E   2???           00563                         CALL    SETPAB1A        ;do anodes PA1a & PB1a
+013F   2???           00564                         GOTO    SHFT
+                      00565 
+0140   2???           00566 SETAB           CALL    SETPAB0A        ;do anodes PA0a & PB0a
+0141   0AA6           00567                         INCF    ANVAL,F         ;increment anode value then...
+0142   2???           00568                         CALL    SETPAB1B        ;do anodes PA1b & PB1b  
+0143   2???           00569                         GOTO    SHFT
+                      00570 
+                      00571 
+                      00572 ;anode setting routines
+                      00573 ;
+0144                  00574 SETPAB29:
+0144   3008           00575                         MOVLW   0X08
+0145   00F9           00576                         MOVWF   INTEMP0         ;bit counter
+0146   2???           00577                         GOTO    INIPAB29
+                      00578 
+0147   0AA6           00579 PAB29LP         INCF    ANVAL,F         ;increment anode value
+0148   1003           00580                         BCF             STATUS,C
+0149   0CA2           00581                         RRF             PA29,F          ;shift bits down
+014A   1003           00582                         BCF             STATUS,C
+014B   0CA0           00583                         RRF             PB29,F
+                      00584         
+014C   0826           00585 INIPAB29        MOVF    ANVAL,W         ;test Bar on left values
+014D   0227           00586                         SUBWF   BONVL,W
+014E   1C03           00587                         BTFSS   STATUS,C        ;if Anval > Bar on left value...
+014F   17A0           00588                         BSF             PB29,7          ;switch on bit7 (will be shifted down)
+0150   0826           00589                         MOVF    ANVAL,W
+0151   0229           00590                         SUBWF   BONVR,W
+0152   1C03           00591                         BTFSS   STATUS,C
+0153   17A2           00592                         BSF             PA29,7
+                      00593 
+0154   0826           00594                         MOVF    ANVAL,W         ;test bar off values
+0155   0228           00595                         SUBWF   BOFFVL,W
+0156   1C03           00596                         BTFSS   STATUS,C        ;if anval > Bar off value
+0157   13A0           00597                         BCF             PB29,7          ;switch anode off
+0158   0826           00598                         MOVF    ANVAL,W
+0159   022A           00599                         SUBWF   BOFFVR,W
+015A   1C03           00600                         BTFSS   STATUS,C
+015B   13A2           00601                         BCF             PA29,7
+                      00602 
+015C   0826           00603                         MOVF    ANVAL,W         ;test Dot values
+015D   022B           00604                         SUBWF   DOTVL,W
+015E   1903           00605                         BTFSC   STATUS,Z        ;if anval = dot value
+015F   17A0           00606                         BSF             PB29,7          ;switch anode on
+0160   0826           00607                         MOVF    ANVAL,W
+0161   022C           00608                         SUBWF   DOTVR,W
+0162   1903           00609                         BTFSC   STATUS,Z
+0163   17A2           00610                         BSF             PA29,7
+                      00611 
+0164   0BF9           00612                         DECFSZ  INTEMP0,F
+0165   2???           00613                         GOTO    PAB29LP
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00614 
+0166   0008           00615                         RETURN
+                      00616 
+                      00617 
+0167                  00618 SETPAB1A:
+0167   0826           00619                         MOVF    ANVAL,W         ;test Bar on values
+0168   0227           00620                         SUBWF   BONVL,W
+0169   1C03           00621                         BTFSS   STATUS,C        ;if Anval > Bar on value...
+016A   1621           00622                         BSF             PAB01,PB1A      ;switch anode on
+016B   0826           00623                         MOVF    ANVAL,W
+016C   0229           00624                         SUBWF   BONVR,W
+016D   1C03           00625                         BTFSS   STATUS,C
+016E   1721           00626                         BSF             PAB01,PA1A
+                      00627 
+016F   0826           00628                         MOVF    ANVAL,W         ;test bar off values
+0170   0228           00629                         SUBWF   BOFFVL,W
+0171   1C03           00630                         BTFSS   STATUS,C        ;if anval > Bar off value
+0172   1221           00631                         BCF             PAB01,PB1A      ;switch anode off
+0173   0826           00632                         MOVF    ANVAL,W
+0174   022A           00633                         SUBWF   BOFFVR,W
+0175   1C03           00634                         BTFSS   STATUS,C
+0176   1321           00635                         BCF             PAB01,PA1A
+                      00636 
+0177   0826           00637                         MOVF    ANVAL,W         ;test Dot values
+0178   022B           00638                         SUBWF   DOTVL,W
+0179   1903           00639                         BTFSC   STATUS,Z        ;if anval = dot value
+017A   1621           00640                         BSF             PAB01,PB1A      ;switch anode on
+017B   0826           00641                         MOVF    ANVAL,W
+017C   022C           00642                         SUBWF   DOTVR,W
+017D   1903           00643                         BTFSC   STATUS,Z
+017E   1721           00644                         BSF             PAB01,PA1A
+                      00645 
+017F   0008           00646                         RETURN
+                      00647 
+0180                  00648 SETPAB0A:
+0180   0826           00649                         MOVF    ANVAL,W         ;test Bar on values
+0181   0227           00650                         SUBWF   BONVL,W
+0182   1C03           00651                         BTFSS   STATUS,C        ;if Anval > Bar on value...
+0183   1421           00652                         BSF             PAB01,PB0A      ;switch anode on
+0184   0826           00653                         MOVF    ANVAL,W
+0185   0229           00654                         SUBWF   BONVR,W
+0186   1C03           00655                         BTFSS   STATUS,C
+0187   1521           00656                         BSF             PAB01,PA0A
+                      00657 
+0188   0826           00658                         MOVF    ANVAL,W         ;test Bar off values
+0189   0228           00659                         SUBWF   BOFFVL,W
+018A   1C03           00660                         BTFSS   STATUS,C        ;if anval > Bar off value
+018B   1021           00661                         BCF             PAB01,PB0A      ;switch anode off
+018C   0826           00662                         MOVF    ANVAL,W
+018D   022A           00663                         SUBWF   BOFFVR,W
+018E   1C03           00664                         BTFSS   STATUS,C
+018F   1121           00665                         BCF             PAB01,PA0A
+                      00666 
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0190   0826           00667                         MOVF    ANVAL,W         ;test Dot values
+0191   022B           00668                         SUBWF   DOTVL,W
+0192   1903           00669                         BTFSC   STATUS,Z        ;if anval = dot value
+0193   1421           00670                         BSF             PAB01,PB0A      ;switch anode on
+0194   0826           00671                         MOVF    ANVAL,W
+0195   022C           00672                         SUBWF   DOTVR,W
+0196   1903           00673                         BTFSC   STATUS,Z
+0197   1521           00674                         BSF             PAB01,PA0A
+0198   0008           00675                         RETURN
+                      00676 
+0199                  00677 SETPAB1B:
+0199   0826           00678                         MOVF    ANVAL,W         ;test Bar on values
+019A   0227           00679                         SUBWF   BONVL,W
+019B   1C03           00680                         BTFSS   STATUS,C        ;if Anval > Bar on value...
+019C   16A1           00681                         BSF             PAB01,PB1B      ;switch anode on
+019D   0826           00682                         MOVF    ANVAL,W
+019E   0229           00683                         SUBWF   BONVR,W
+019F   1C03           00684                         BTFSS   STATUS,C
+01A0   17A1           00685                         BSF             PAB01,PA1B
+                      00686 
+01A1   0826           00687                         MOVF    ANVAL,W         ;test bar off values
+01A2   0228           00688                         SUBWF   BOFFVL,W
+01A3   1C03           00689                         BTFSS   STATUS,C        ;if anval > Bar off value
+01A4   12A1           00690                         BCF             PAB01,PB1B      ;switch anode off
+01A5   0826           00691                         MOVF    ANVAL,W
+01A6   022A           00692                         SUBWF   BOFFVR,W
+01A7   1C03           00693                         BTFSS   STATUS,C
+01A8   13A1           00694                         BCF             PAB01,PA1B
+                      00695 
+01A9   0826           00696                         MOVF    ANVAL,W         ;test Dot values
+01AA   022B           00697                         SUBWF   DOTVL,W
+01AB   1903           00698                         BTFSC   STATUS,Z        ;if anval = dot value
+01AC   16A1           00699                         BSF             PAB01,PB1B      ;switch anode on
+01AD   0826           00700                         MOVF    ANVAL,W
+01AE   022C           00701                         SUBWF   DOTVR,W
+01AF   1903           00702                         BTFSC   STATUS,Z
+01B0   17A1           00703                         BSF             PAB01,PA1B
+                      00704 
+01B1   0008           00705                         RETURN
+                      00706 
+01B2                  00707 SETPAB0B:
+01B2   0826           00708                         MOVF    ANVAL,W         ;test Bar on values
+01B3   0227           00709                         SUBWF   BONVL,W
+01B4   1C03           00710                         BTFSS   STATUS,C        ;if Anval > Bar on value...
+01B5   14A1           00711                         BSF             PAB01,PB0B      ;switch anode on
+01B6   0826           00712                         MOVF    ANVAL,W
+01B7   0229           00713                         SUBWF   BONVR,W
+01B8   1C03           00714                         BTFSS   STATUS,C
+01B9   15A1           00715                         BSF             PAB01,PA0B
+                      00716 
+01BA   0826           00717                         MOVF    ANVAL,W         ;test Bar off values
+01BB   0228           00718                         SUBWF   BOFFVL,W
+01BC   1C03           00719                         BTFSS   STATUS,C        ;if anval > Bar off value
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01BD   10A1           00720                         BCF             PAB01,PB0B      ;switch anode off
+01BE   0826           00721                         MOVF    ANVAL,W
+01BF   022A           00722                         SUBWF   BOFFVR,W
+01C0   1C03           00723                         BTFSS   STATUS,C
+01C1   11A1           00724                         BCF             PAB01,PA0B
+                      00725 
+01C2   0826           00726                         MOVF    ANVAL,W         ;test Dot values
+01C3   022B           00727                         SUBWF   DOTVL,W
+01C4   1903           00728                         BTFSC   STATUS,Z        ;if anval = dot value
+01C5   14A1           00729                         BSF             PAB01,PB0B      ;switch anode on
+01C6   0826           00730                         MOVF    ANVAL,W
+01C7   022C           00731                         SUBWF   DOTVR,W
+01C8   1903           00732                         BTFSC   STATUS,Z
+01C9   15A1           00733                         BSF             PAB01,PA0B
+01CA   0008           00734                         RETURN
+                      00735 
+                      00736 ;This routine sets the grid bytes for the current frame
+01CB   0825           00737 SETGRID         MOVF    FRMNO,W         ;get frame number
+01CC   2???           00738                         CALL    GRDTABL         ;get low byte
+01CD   39FE           00739                         ANDLW   0XFE            ;ignore and clear bit0 (ABBA flag)
+01CE   00A3           00740                         MOVWF   GRD17           ;save grid setting
+01CF   0825           00741                         MOVF    FRMNO,W         ;get frame number
+01D0   2???           00742                         CALL    GRDTABH         ;get Hi byte
+01D1   00A4           00743                         MOVWF   GRD810          ;save grid setting
+01D2   0008           00744                         RETURN  
+                      00745 
+01D3   0825           00746 SETAVAL         MOVF    FRMNO,W         ;get frame number
+01D4   2???           00747                         CALL    ANVTAB          ;get value
+01D5   00A6           00748                         MOVWF   ANVAL           ;save grid setting
+01D6   0008           00749                         RETURN                          
+                      00750 
+                      00751 
+                      00752 
+                      00753 ;shift bits out to display
+                      00754 ;N.B. This routine uses bit bashing for compatibility with simple pics 
+                      00755 ;but you could use the sync-serial port for speed if required.
+                      00756 ;it does not use the indirection pointer 
+                      00757 ;
+                      00758 
+01D7   120C           00759 SHFTOUT                 BCF             DISPORT,SDATA
+01D8   128C           00760                         BCF             DISPORT,SCLK
+01D9   118C           00761                         BCF             DISPORT,LATCH
+                      00762 
+01DA   3008           00763                         MOVLW   0X08
+01DB   00F9           00764                         MOVWF   INTEMP0
+01DC   0CA0           00765 OPPB29LP                RRF             PB29,F
+01DD   1803           00766                         BTFSC   STATUS,C
+01DE   160C           00767                         BSF             DISPORT,SDATA
+01DF   168C           00768                         BSF             DISPORT,SCLK            ;clock out the data
+                      00769                         ;nop
+01E0   128C           00770                         BCF             DISPORT,SCLK
+01E1   120C           00771                         BCF             DISPORT,SDATA           ;zero the data
+01E2   0BF9           00772                         DECFSZ  INTEMP0,F
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01E3   2???           00773                         GOTO    OPPB29LP
+                      00774                         
+01E4   3008           00775                         MOVLW   0X08
+01E5   00F9           00776                         MOVWF   INTEMP0
+01E6   0CA1           00777 OPPAB01LP               RRF             PAB01,F
+01E7   1803           00778                         BTFSC   STATUS,C
+01E8   160C           00779                         BSF             DISPORT,SDATA
+01E9   168C           00780                         BSF             DISPORT,SCLK            ;clock out the data
+                      00781                         ;nop
+01EA   128C           00782                         BCF             DISPORT,SCLK
+01EB   0BF9           00783                         DECFSZ  INTEMP0,F
+01EC   2???           00784                         GOTO    OPPAB01LP
+                      00785                         
+01ED   3008           00786                         MOVLW   0X08
+01EE   00F9           00787                         MOVWF   INTEMP0
+01EF   0CA2           00788 OPPA29LP                RRF             PA29,F
+01F0   1803           00789                         BTFSC   STATUS,C
+01F1   160C           00790                         BSF             DISPORT,SDATA
+01F2   168C           00791                         BSF             DISPORT,SCLK            ;clock out the data
+                      00792                         ;nop
+01F3   128C           00793                         BCF             DISPORT,SCLK
+01F4   120C           00794                         BCF             DISPORT,SDATA           ;zero the data
+01F5   0BF9           00795                         DECFSZ  INTEMP0,F
+01F6   2???           00796                         GOTO    OPPA29LP                        
+                      00797 
+01F7   120C           00798                         BCF             DISPORT,SDATA           ;zero the data
+01F8   3008           00799                         MOVLW   0X08
+01F9   00F9           00800                         MOVWF   INTEMP0
+01FA   0CA3           00801 OPGRD17LP               RRF             GRD17,F
+01FB   1803           00802                         BTFSC   STATUS,C
+01FC   160C           00803                         BSF             DISPORT,SDATA
+01FD   168C           00804                         BSF             DISPORT,SCLK            ;clock out the data
+                      00805                         ;nop
+01FE   128C           00806                         BCF             DISPORT,SCLK
+01FF   120C           00807                         BCF             DISPORT,SDATA           ;zero the data
+0200   0BF9           00808                         DECFSZ  INTEMP0,F
+0201   2???           00809                         GOTO    OPGRD17LP       
+                      00810 
+0202   3008           00811                         MOVLW   0X08
+0203   00F9           00812                         MOVWF   INTEMP0
+0204   0CA4           00813 OPGRD810LP              RRF             GRD810,F
+0205   1803           00814                         BTFSC   STATUS,C
+0206   160C           00815                         BSF             DISPORT,SDATA
+0207   168C           00816                         BSF             DISPORT,SCLK            ;clock out the data
+                      00817                         ;nop
+0208   128C           00818                         BCF             DISPORT,SCLK
+0209   120C           00819                         BCF             DISPORT,SDATA           ;zero the data
+020A   0BF9           00820                         DECFSZ  INTEMP0,F
+020B   2???           00821                         GOTO    OPGRD810LP      
+                      00822 
+020C   158C           00823                         BSF             DISPORT,LATCH
+                      00824 
+020D   0008           00825                         RETURN
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00826 
+39A7 3FFF             00827                 END                       ; directive 'end of program'
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 18
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ABBAFG                            00000000
+ABDEN                             00000000
+ABDOVF                            00000007
+ADCON0                            0000009D
+ADCON1                            0000009E
+ADCON2                            0000009F
+ADCS0                             00000004
+ADCS1                             00000005
+ADCS2                             00000006
+ADDEN                             00000003
+ADFM                              00000007
+ADFVR0                            00000000
+ADFVR1                            00000001
+ADGO                              00000001
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADPREF0                           00000000
+ADPREF1                           00000001
+ADRES                             0000009B
+ADRESH                            0000009C
+ADRESL                            0000009B
+ANSA0                             00000000
+ANSA1                             00000001
+ANSA2                             00000002
+ANSA4                             00000004
+ANSELA                            0000018C
+ANVAL                             00000026
+ANVTAB                            00000015
+APFCON                            0000011D
+APFCON0                           0000011D
+AUXIND                            0000002D
+BAUDCON                           0000019F
+BCLP                              00000135
+BOFFVL                            00000028
+BOFFVR                            0000002A
+BONVL                             00000027
+BONVR                             00000029
+BORCON                            00000116
+BORFS                             00000006
+BORRDY                            00000000
+BRG16                             00000003
+BRGH                              00000002
+BSR                               00000008
+BSR0                              00000000
+BSR1                              00000001
+BSR2                              00000002
+BSR3                              00000003
+BSR4                              00000004
+BSR_SHAD                          00000FE6
+C                                 00000000
+C1HYS                             00000001
+C1IE                              00000005
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 19
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+C1IF                              00000005
+C1INTN                            00000006
+C1INTP                            00000007
+C1NCH0                            00000000
+C1NCH1                            00000001
+C1NCH2                            00000002
+C1OE                              00000005
+C1ON                              00000007
+C1OUT                             00000006
+C1PCH0                            00000004
+C1PCH1                            00000005
+C1POL                             00000004
+C1SP                              00000002
+C1SYNC                            00000000
+CDAFVR0                           00000002
+CDAFVR1                           00000003
+CENTREDOT                         000000D9
+CFGS                              00000006
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CHS3                              00000005
+CHS4                              00000006
+CM1CON0                           00000111
+CM1CON1                           00000112
+CMOUT                             00000115
+CONTROL                           00000030
+CONVBAR                           0000009C
+CREN                              00000004
+CS0                               00000000
+CS1                               00000001
+CSRC                              00000007
+CWG1CON0                          00000693
+CWG1CON1                          00000694
+CWG1CON2                          00000695
+CWG1DBF                           00000692
+CWG1DBF0                          00000000
+CWG1DBF1                          00000001
+CWG1DBF2                          00000002
+CWG1DBF3                          00000003
+CWG1DBF4                          00000004
+CWG1DBF5                          00000005
+CWG1DBR                           00000691
+CWG1DBR0                          00000000
+CWG1DBR1                          00000001
+CWG1DBR2                          00000002
+CWG1DBR3                          00000003
+CWG1DBR4                          00000004
+CWG1DBR5                          00000005
+CWGASEL                           00000006
+CWGBSEL                           00000005
+C_SHAD                            00000000
+DACCON0                           00000118
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 20
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+DACCON1                           00000119
+DACEN                             00000007
+DACLPS                            00000006
+DACOE                             00000005
+DACPSS0                           00000002
+DACPSS1                           00000003
+DACR0                             00000000
+DACR1                             00000001
+DACR2                             00000002
+DACR3                             00000003
+DACR4                             00000004
+DC                                00000001
+DCIE                              00000001
+DCIF                              00000001
+DC_SHAD                           00000001
+DISPORT                           0000000C
+DOFRM                             00000112
+DOMODE                            0000008F
+DOTVL                             0000002B
+DOTVR                             0000002C
+EN                                00000007
+EVNFRM                            00000123
+F                                 00000001
+FERR                              00000002
+FREE                              00000004
+FRMNO                             00000025
+FSR0                              00000004
+FSR0H                             00000005
+FSR0H_SHAD                        00000FE9
+FSR0L                             00000004
+FSR0L_SHAD                        00000FE8
+FSR0_SHAD                         00000FE8
+FSR1                              00000006
+FSR1H                             00000007
+FSR1H_SHAD                        00000FEB
+FSR1L                             00000006
+FSR1L_SHAD                        00000FEA
+FSR1_SHAD                         00000FEA
+FVRCON                            00000117
+FVREN                             00000007
+FVRRDY                            00000006
+G1ARSEN                           00000006
+G1ASDLA0                          00000004
+G1ASDLA1                          00000005
+G1ASDLB0                          00000006
+G1ASDLB1                          00000007
+G1ASDSC1                          00000002
+G1ASDSFLT                         00000001
+G1ASE                             00000007
+G1CS0                             00000000
+G1EN                              00000007
+G1IS0                             00000000
+G1IS1                             00000001
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 21
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+G1IS2                             00000002
+G1OEA                             00000005
+G1OEB                             00000006
+G1POLA                            00000003
+G1POLB                            00000004
+GIE                               00000007
+GO                                00000001
+GO_NOT_DONE                       00000001
+GRD17                             00000023
+GRD810                            00000024
+GRDTABH                           0000003D
+GRDTABL                           00000029
+HFIOFL                            00000003
+HFIOFR                            00000004
+HFIOFS                            00000000
+IND1                              00000007
+IND2                              00000006
+IND3                              00000005
+IND4                              00000004
+IND5                              00000003
+INDBAR                            000000A5
+INDF0                             00000000
+INDF1                             00000001
+INIPAB29                          0000014C
+INLVLA                            0000038C
+INLVLA0                           00000000
+INLVLA1                           00000001
+INLVLA2                           00000002
+INLVLA3                           00000003
+INLVLA4                           00000004
+INLVLA5                           00000005
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTEMP0                           00000079
+INTEMP1                           0000007A
+INTF                              00000001
+INTXIT                            0000000E
+INVBAR                            000000AF
+IOCAF                             00000393
+IOCAF0                            00000000
+IOCAF1                            00000001
+IOCAF2                            00000002
+IOCAF3                            00000003
+IOCAF4                            00000004
+IOCAF5                            00000005
+IOCAN                             00000392
+IOCAN0                            00000000
+IOCAN1                            00000001
+IOCAN2                            00000002
+IOCAN3                            00000003
+IOCAN4                            00000004
+IOCAN5                            00000005
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 22
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+IOCAP                             00000391
+IOCAP0                            00000000
+IOCAP1                            00000001
+IOCAP2                            00000002
+IOCAP3                            00000003
+IOCAP4                            00000004
+IOCAP5                            00000005
+IOCIE                             00000003
+IOCIF                             00000000
+IRCF0                             00000003
+IRCF1                             00000004
+IRCF2                             00000005
+IRCF3                             00000006
+LATA                              0000010C
+LATA0                             00000000
+LATA1                             00000001
+LATA2                             00000002
+LATA4                             00000004
+LATA5                             00000005
+LATCH                             00000003
+LDA                               00000007
+LDS0                              00000000
+LDS1                              00000001
+LDT                               00000006
+LFIOFR                            00000001
+LIN                               00000000
+LWLO                              00000005
+MAIN                              00000051
+MAINLP                            0000006A
+MC1OUT                            00000000
+MFIOFR                            00000002
+MODE                              0000002F
+MODE0                             00000002
+MODE1                             00000003
+MPWM1EN                           00000000
+MPWM1LD                           00000000
+MPWM1OUT                          00000000
+MPWM2EN                           00000001
+MPWM2LD                           00000001
+MPWM2OUT                          00000001
+MPWM3EN                           00000002
+MPWM3LD                           00000002
+MPWM3OUT                          00000002
+NOT_BOR                           00000000
+NOT_DONE                          00000001
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RI                            00000002
+NOT_RMCLR                         00000003
+NOT_RWDT                          00000004
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+NOT_WPUEN                         00000007
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ODA0                              00000000
+ODA1                              00000001
+ODA2                              00000002
+ODA4                              00000004
+ODA5                              00000005
+ODCONA                            0000028C
+OE                                00000006
+OERR                              00000001
+OFIE                              00000003
+OFIF                              00000003
+OFM0                              00000005
+OFM1                              00000006
+OFO                               00000004
+OFS0                              00000000
+OFS1                              00000001
+OPGRD17LP                         000001FA
+OPGRD810LP                        00000204
+OPPA29LP                          000001EF
+OPPAB01LP                         000001E6
+OPPB29LP                          000001DC
+OPTION_REG                        00000095
+OSCCON                            00000099
+OSCSTAT                           0000009A
+OSCTUNE                           00000098
+OSTS                              00000005
+OUT                               00000005
+P1SEL                             00000000
+P2SEL                             00000001
+PA0A                              00000002
+PA0B                              00000003
+PA1A                              00000006
+PA1B                              00000007
+PA29                              00000022
+PAB00                             00000000
+PAB01                             00000021
+PAB29LP                           00000147
+PB0A                              00000000
+PB0B                              00000001
+PB1A                              00000004
+PB1B                              00000005
+PB29                              00000020
+PCL                               00000002
+PCLATH                            0000000A
+PCLATH_SHAD                       00000FE7
+PCLATH_TEMP                       0000007F
+PCON                              00000096
+PEAKBAR                           000000E4
+PEIE                              00000006
+PHIE                              00000002
+PHIF                              00000002
+PIE1                              00000091
+PIE2                              00000092
+PIE3                              00000093
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PIR1                              00000011
+PIR2                              00000012
+PIR3                              00000013
+PKRIGHT                           000000FD
+PKRND                             000000ED
+PLLR                              00000006
+PMADR                             00000191
+PMADRH                            00000192
+PMADRL                            00000191
+PMCON1                            00000195
+PMCON2                            00000196
+PMDAT                             00000193
+PMDATH                            00000194
+PMDATL                            00000193
+POL                               00000004
+PORTA                             0000000C
+PR2                               0000001B
+PRIE                              00000000
+PRIF                              00000000
+PS0_OPTION_REG                    00000000
+PS0_PWM1CLKCON                    00000004
+PS0_PWM2CLKCON                    00000004
+PS0_PWM3CLKCON                    00000004
+PS1_OPTION_REG                    00000001
+PS1_PWM1CLKCON                    00000005
+PS1_PWM2CLKCON                    00000005
+PS1_PWM3CLKCON                    00000005
+PS2_OPTION_REG                    00000002
+PS2_PWM1CLKCON                    00000006
+PS2_PWM2CLKCON                    00000006
+PS2_PWM3CLKCON                    00000006
+PSA                               00000003
+PWM1CLKCON                        00000D9E
+PWM1CON                           00000D9B
+PWM1CS0                           00000000
+PWM1CS1                           00000001
+PWM1DC                            00000D93
+PWM1DCH                           00000D94
+PWM1DCH0                          00000000
+PWM1DCH1                          00000001
+PWM1DCH2                          00000002
+PWM1DCH3                          00000003
+PWM1DCH4                          00000004
+PWM1DCH5                          00000005
+PWM1DCH6                          00000006
+PWM1DCH7                          00000007
+PWM1DCIE                          00000001
+PWM1DCIF                          00000001
+PWM1DCL                           00000D93
+PWM1DCL0                          00000000
+PWM1DCL1                          00000001
+PWM1DCL2                          00000002
+PWM1DCL3                          00000003
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 25
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM1DCL4                          00000004
+PWM1DCL5                          00000005
+PWM1DCL6                          00000006
+PWM1DCL7                          00000007
+PWM1EN                            00000007
+PWM1EN_A                          00000000
+PWM1IE                            00000004
+PWM1IF                            00000004
+PWM1INTCON                        00000D9C
+PWM1INTE                          00000D9C
+PWM1INTF                          00000D9D
+PWM1INTFLG                        00000D9D
+PWM1LD                            00000007
+PWM1LDA_A                         00000000
+PWM1LDCON                         00000D9F
+PWM1LDM                           00000006
+PWM1LDS0                          00000000
+PWM1LDS1                          00000001
+PWM1MODE0                         00000002
+PWM1MODE1                         00000003
+PWM1OE                            00000006
+PWM1OF                            00000D97
+PWM1OFCON                         00000DA0
+PWM1OFH                           00000D98
+PWM1OFH0                          00000000
+PWM1OFH1                          00000001
+PWM1OFH2                          00000002
+PWM1OFH3                          00000003
+PWM1OFH4                          00000004
+PWM1OFH5                          00000005
+PWM1OFH6                          00000006
+PWM1OFH7                          00000007
+PWM1OFIE                          00000003
+PWM1OFIF                          00000003
+PWM1OFL                           00000D97
+PWM1OFL0                          00000000
+PWM1OFL1                          00000001
+PWM1OFL2                          00000002
+PWM1OFL3                          00000003
+PWM1OFL4                          00000004
+PWM1OFL5                          00000005
+PWM1OFL6                          00000006
+PWM1OFL7                          00000007
+PWM1OFM0                          00000005
+PWM1OFM1                          00000006
+PWM1OFMC                          00000004
+PWM1OFS0                          00000000
+PWM1OFS1                          00000001
+PWM1OUT                           00000005
+PWM1OUT_A                         00000000
+PWM1PH                            00000D91
+PWM1PHH                           00000D92
+PWM1PHH0                          00000000
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 26
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM1PHH1                          00000001
+PWM1PHH2                          00000002
+PWM1PHH3                          00000003
+PWM1PHH4                          00000004
+PWM1PHH5                          00000005
+PWM1PHH6                          00000006
+PWM1PHH7                          00000007
+PWM1PHIE                          00000002
+PWM1PHIF                          00000002
+PWM1PHL                           00000D91
+PWM1PHL0                          00000000
+PWM1PHL1                          00000001
+PWM1PHL2                          00000002
+PWM1PHL3                          00000003
+PWM1PHL4                          00000004
+PWM1PHL5                          00000005
+PWM1PHL6                          00000006
+PWM1PHL7                          00000007
+PWM1POL                           00000004
+PWM1PR                            00000D95
+PWM1PRH                           00000D96
+PWM1PRH0                          00000000
+PWM1PRH1                          00000001
+PWM1PRH2                          00000002
+PWM1PRH3                          00000003
+PWM1PRH4                          00000004
+PWM1PRH5                          00000005
+PWM1PRH6                          00000006
+PWM1PRH7                          00000007
+PWM1PRIE                          00000000
+PWM1PRIF                          00000000
+PWM1PRL                           00000D95
+PWM1PRL0                          00000000
+PWM1PRL1                          00000001
+PWM1PRL2                          00000002
+PWM1PRL3                          00000003
+PWM1PRL4                          00000004
+PWM1PRL5                          00000005
+PWM1PRL6                          00000006
+PWM1PRL7                          00000007
+PWM1PS0                           00000004
+PWM1PS1                           00000005
+PWM1PS2                           00000006
+PWM1TMR                           00000D99
+PWM1TMRH                          00000D9A
+PWM1TMRH0                         00000000
+PWM1TMRH1                         00000001
+PWM1TMRH2                         00000002
+PWM1TMRH3                         00000003
+PWM1TMRH4                         00000004
+PWM1TMRH5                         00000005
+PWM1TMRH6                         00000006
+PWM1TMRH7                         00000007
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 27
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM1TMRL                          00000D99
+PWM1TMRL0                         00000000
+PWM1TMRL1                         00000001
+PWM1TMRL2                         00000002
+PWM1TMRL3                         00000003
+PWM1TMRL4                         00000004
+PWM1TMRL5                         00000005
+PWM1TMRL6                         00000006
+PWM1TMRL7                         00000007
+PWM2CLKCON                        00000DAE
+PWM2CON                           00000DAB
+PWM2CS0                           00000000
+PWM2CS1                           00000001
+PWM2DC                            00000DA3
+PWM2DCH                           00000DA4
+PWM2DCH0                          00000000
+PWM2DCH1                          00000001
+PWM2DCH2                          00000002
+PWM2DCH3                          00000003
+PWM2DCH4                          00000004
+PWM2DCH5                          00000005
+PWM2DCH6                          00000006
+PWM2DCH7                          00000007
+PWM2DCIE                          00000001
+PWM2DCIF                          00000001
+PWM2DCL                           00000DA3
+PWM2DCL0                          00000000
+PWM2DCL1                          00000001
+PWM2DCL2                          00000002
+PWM2DCL3                          00000003
+PWM2DCL4                          00000004
+PWM2DCL5                          00000005
+PWM2DCL6                          00000006
+PWM2DCL7                          00000007
+PWM2EN                            00000007
+PWM2EN_A                          00000001
+PWM2IE                            00000005
+PWM2IF                            00000005
+PWM2INTCON                        00000DAC
+PWM2INTE                          00000DAC
+PWM2INTF                          00000DAD
+PWM2INTFLG                        00000DAD
+PWM2LD                            00000007
+PWM2LDA_A                         00000001
+PWM2LDCON                         00000DAF
+PWM2LDM                           00000006
+PWM2LDS0                          00000000
+PWM2LDS1                          00000001
+PWM2MODE0                         00000002
+PWM2MODE1                         00000003
+PWM2OE                            00000006
+PWM2OF                            00000DA7
+PWM2OFCON                         00000DB0
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 28
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM2OFH                           00000DA8
+PWM2OFH0                          00000000
+PWM2OFH1                          00000001
+PWM2OFH2                          00000002
+PWM2OFH3                          00000003
+PWM2OFH4                          00000004
+PWM2OFH5                          00000005
+PWM2OFH6                          00000006
+PWM2OFH7                          00000007
+PWM2OFIE                          00000003
+PWM2OFIF                          00000003
+PWM2OFL                           00000DA7
+PWM2OFL0                          00000000
+PWM2OFL1                          00000001
+PWM2OFL2                          00000002
+PWM2OFL3                          00000003
+PWM2OFL4                          00000004
+PWM2OFL5                          00000005
+PWM2OFL6                          00000006
+PWM2OFL7                          00000007
+PWM2OFM0                          00000005
+PWM2OFM1                          00000006
+PWM2OFMC                          00000004
+PWM2OFS0                          00000000
+PWM2OFS1                          00000001
+PWM2OUT                           00000005
+PWM2OUT_A                         00000001
+PWM2PH                            00000DA1
+PWM2PHH                           00000DA2
+PWM2PHH0                          00000000
+PWM2PHH1                          00000001
+PWM2PHH2                          00000002
+PWM2PHH3                          00000003
+PWM2PHH4                          00000004
+PWM2PHH5                          00000005
+PWM2PHH6                          00000006
+PWM2PHH7                          00000007
+PWM2PHIE                          00000002
+PWM2PHIF                          00000002
+PWM2PHL                           00000DA1
+PWM2PHL0                          00000000
+PWM2PHL1                          00000001
+PWM2PHL2                          00000002
+PWM2PHL3                          00000003
+PWM2PHL4                          00000004
+PWM2PHL5                          00000005
+PWM2PHL6                          00000006
+PWM2PHL7                          00000007
+PWM2POL                           00000004
+PWM2PR                            00000DA5
+PWM2PRH                           00000DA6
+PWM2PRH0                          00000000
+PWM2PRH1                          00000001
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 29
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM2PRH2                          00000002
+PWM2PRH3                          00000003
+PWM2PRH4                          00000004
+PWM2PRH5                          00000005
+PWM2PRH6                          00000006
+PWM2PRH7                          00000007
+PWM2PRIE                          00000000
+PWM2PRIF                          00000000
+PWM2PRL                           00000DA5
+PWM2PRL0                          00000000
+PWM2PRL1                          00000001
+PWM2PRL2                          00000002
+PWM2PRL3                          00000003
+PWM2PRL4                          00000004
+PWM2PRL5                          00000005
+PWM2PRL6                          00000006
+PWM2PRL7                          00000007
+PWM2PS0                           00000004
+PWM2PS1                           00000005
+PWM2PS2                           00000006
+PWM2TMR                           00000DA9
+PWM2TMRH                          00000DAA
+PWM2TMRH0                         00000000
+PWM2TMRH1                         00000001
+PWM2TMRH2                         00000002
+PWM2TMRH3                         00000003
+PWM2TMRH4                         00000004
+PWM2TMRH5                         00000005
+PWM2TMRH6                         00000006
+PWM2TMRH7                         00000007
+PWM2TMRL                          00000DA9
+PWM2TMRL0                         00000000
+PWM2TMRL1                         00000001
+PWM2TMRL2                         00000002
+PWM2TMRL3                         00000003
+PWM2TMRL4                         00000004
+PWM2TMRL5                         00000005
+PWM2TMRL6                         00000006
+PWM2TMRL7                         00000007
+PWM3CLKCON                        00000DBE
+PWM3CON                           00000DBB
+PWM3CS0                           00000000
+PWM3CS1                           00000001
+PWM3DC                            00000DB3
+PWM3DCH                           00000DB4
+PWM3DCH0                          00000000
+PWM3DCH1                          00000001
+PWM3DCH2                          00000002
+PWM3DCH3                          00000003
+PWM3DCH4                          00000004
+PWM3DCH5                          00000005
+PWM3DCH6                          00000006
+PWM3DCH7                          00000007
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 30
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM3DCIE                          00000001
+PWM3DCIF                          00000001
+PWM3DCL                           00000DB3
+PWM3DCL0                          00000000
+PWM3DCL1                          00000001
+PWM3DCL2                          00000002
+PWM3DCL3                          00000003
+PWM3DCL4                          00000004
+PWM3DCL5                          00000005
+PWM3DCL6                          00000006
+PWM3DCL7                          00000007
+PWM3EN                            00000007
+PWM3EN_A                          00000002
+PWM3IE                            00000006
+PWM3IF                            00000006
+PWM3INTCON                        00000DBC
+PWM3INTE                          00000DBC
+PWM3INTF                          00000DBD
+PWM3INTFLG                        00000DBD
+PWM3LD                            00000007
+PWM3LDA_A                         00000002
+PWM3LDCON                         00000DBF
+PWM3LDM                           00000006
+PWM3LDS0                          00000000
+PWM3LDS1                          00000001
+PWM3MODE0                         00000002
+PWM3MODE1                         00000003
+PWM3OE                            00000006
+PWM3OF                            00000DB7
+PWM3OFCON                         00000DC0
+PWM3OFH                           00000DB8
+PWM3OFH0                          00000000
+PWM3OFH1                          00000001
+PWM3OFH2                          00000002
+PWM3OFH3                          00000003
+PWM3OFH4                          00000004
+PWM3OFH5                          00000005
+PWM3OFH6                          00000006
+PWM3OFH7                          00000007
+PWM3OFIE                          00000003
+PWM3OFIF                          00000003
+PWM3OFL                           00000DB7
+PWM3OFL0                          00000000
+PWM3OFL1                          00000001
+PWM3OFL2                          00000002
+PWM3OFL3                          00000003
+PWM3OFL4                          00000004
+PWM3OFL5                          00000005
+PWM3OFL6                          00000006
+PWM3OFL7                          00000007
+PWM3OFM0                          00000005
+PWM3OFM1                          00000006
+PWM3OFMC                          00000004
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 31
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM3OFS0                          00000000
+PWM3OFS1                          00000001
+PWM3OUT                           00000005
+PWM3OUT_A                         00000002
+PWM3PH                            00000DB1
+PWM3PHH                           00000DB2
+PWM3PHH0                          00000000
+PWM3PHH1                          00000001
+PWM3PHH2                          00000002
+PWM3PHH3                          00000003
+PWM3PHH4                          00000004
+PWM3PHH5                          00000005
+PWM3PHH6                          00000006
+PWM3PHH7                          00000007
+PWM3PHIE                          00000002
+PWM3PHIF                          00000002
+PWM3PHL                           00000DB1
+PWM3PHL0                          00000000
+PWM3PHL1                          00000001
+PWM3PHL2                          00000002
+PWM3PHL3                          00000003
+PWM3PHL4                          00000004
+PWM3PHL5                          00000005
+PWM3PHL6                          00000006
+PWM3PHL7                          00000007
+PWM3POL                           00000004
+PWM3PR                            00000DB5
+PWM3PRH                           00000DB6
+PWM3PRH0                          00000000
+PWM3PRH1                          00000001
+PWM3PRH2                          00000002
+PWM3PRH3                          00000003
+PWM3PRH4                          00000004
+PWM3PRH5                          00000005
+PWM3PRH6                          00000006
+PWM3PRH7                          00000007
+PWM3PRIE                          00000000
+PWM3PRIF                          00000000
+PWM3PRL                           00000DB5
+PWM3PRL0                          00000000
+PWM3PRL1                          00000001
+PWM3PRL2                          00000002
+PWM3PRL3                          00000003
+PWM3PRL4                          00000004
+PWM3PRL5                          00000005
+PWM3PRL6                          00000006
+PWM3PRL7                          00000007
+PWM3PS0                           00000004
+PWM3PS1                           00000005
+PWM3PS2                           00000006
+PWM3TMR                           00000DB9
+PWM3TMRH                          00000DBA
+PWM3TMRH0                         00000000
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 32
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM3TMRH1                         00000001
+PWM3TMRH2                         00000002
+PWM3TMRH3                         00000003
+PWM3TMRH4                         00000004
+PWM3TMRH5                         00000005
+PWM3TMRH6                         00000006
+PWM3TMRH7                         00000007
+PWM3TMRL                          00000DB9
+PWM3TMRL0                         00000000
+PWM3TMRL1                         00000001
+PWM3TMRL2                         00000002
+PWM3TMRL3                         00000003
+PWM3TMRL4                         00000004
+PWM3TMRL5                         00000005
+PWM3TMRL6                         00000006
+PWM3TMRL7                         00000007
+PWMEN                             00000D8E
+PWMLD                             00000D8F
+PWMOUT                            00000D90
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RAMP                              00000081
+RAMPDN                            0000008A
+RAMPDWN                           00000000
+RANDHI                            00000073
+RANDLO                            00000072
+RANDOM16                          00000076
+RCIDL                             00000006
+RCIE                              00000005
+RCIF                              00000005
+RCREG                             00000199
+RCSTA                             0000019D
+RD                                00000000
+RIN                               00000001
+RX9                               00000006
+RX9D                              00000000
+RXDTSEL                           00000007
+SBOREN                            00000007
+SCKP                              00000004
+SCLK                              00000005
+SCS0                              00000000
+SCS1                              00000001
+SDATA                             00000004
+SENDB                             00000003
+SETAB                             00000140
+SETAVAL                           000001D3
+SETGRID                           000001CB
+SETPAB0A                          00000180
+SETPAB0B                          000001B2
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+SETPAB1A                          00000167
+SETPAB1B                          00000199
+SETPAB29                          00000144
+SETTIMER                          0000010E
+SHFT                              0000012D
+SHFTOUT                           000001D7
+SIMPLEDOT                         000000CF
+SLRA0                             00000000
+SLRA1                             00000001
+SLRA2                             00000002
+SLRA4                             00000004
+SLRA5                             00000005
+SLRCONA                           0000030C
+SPBRG                             0000019B
+SPBRGH                            0000019C
+SPBRGL                            0000019B
+SPEN                              00000007
+SPLLEN                            00000007
+SREN                              00000005
+STATUS                            00000003
+STATUS_SHAD                       00000FE4
+STATUS_TEMP                       0000007E
+STKOVF                            00000007
+STKPTR                            00000FED
+STKUNF                            00000006
+SWDTEN                            00000000
+SWITCH                            00000002
+SYNC                              00000004
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000018
+T1GCON                            00000019
+T1GGO                             00000003
+T1GGO_NOT_DONE                    00000003
+T1GPOL                            00000006
+T1GSEL                            00000003
+T1GSPM                            00000004
+T1GSS0                            00000000
+T1GSS1                            00000001
+T1GTM                             00000005
+T1GVAL                            00000002
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             0000001C
+T2OUTPS0                          00000003
+T2OUTPS1                          00000004
+T2OUTPS2                          00000005
+T2OUTPS3                          00000006
+TEMP0                             00000070
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TEMP1                             00000071
+TESTVAL                           0000002E
+TMR0                              00000015
+TMR0CS                            00000005
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR0SE                            00000004
+TMR1                              00000016
+TMR1CS0                           00000006
+TMR1CS1                           00000007
+TMR1GE                            00000007
+TMR1GIE                           00000007
+TMR1GIF                           00000007
+TMR1H                             00000017
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             00000016
+TMR1ON                            00000000
+TMR2                              0000001A
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOS                               00000FEE
+TOSH                              00000FEF
+TOSL                              00000FEE
+TRDPOS                            000000C8
+TRENDBAR                          000000BA
+TRIGSEL0                          00000004
+TRIGSEL1                          00000005
+TRIGSEL2                          00000006
+TRIGSEL3                          00000007
+TRISA                             0000008C
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRMT                              00000001
+TSEN                              00000005
+TSRNG                             00000004
+TSTODD                            0000012F
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000003
+TUN4                              00000004
+TUN5                              00000005
+TX9                               00000006
+TX9D                              00000000
+TXCKSEL                           00000002
+TXEN                              00000005
+TXIE                              00000004
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 35
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TXIF                              00000004
+TXREG                             0000019A
+TXSTA                             0000019E
+VREGCON                           00000197
+VREGPM                            00000001
+W                                 00000000
+WDTCON                            00000097
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WDTPS4                            00000005
+WPUA                              0000020C
+WPUA0                             00000000
+WPUA1                             00000001
+WPUA2                             00000002
+WPUA3                             00000003
+WPUA4                             00000004
+WPUA5                             00000005
+WR                                00000001
+WREG                              00000009
+WREG_SHAD                         00000FE5
+WREN                              00000002
+WRERR                             00000003
+WUE                               00000001
+W_TEMP                            0000007D
+Z                                 00000002
+Z_SHAD                            00000002
+_BOREN_NSLEEP                     00003DFF
+_BOREN_OFF                        000039FF
+_BOREN_ON                         00003FFF
+_BOREN_SBODEN                     00003BFF
+_BORV_19                          00003FFF
+_BORV_HI                          00003BFF
+_BORV_LO                          00003FFF
+_CLKOUTEN_OFF                     00003FFF
+_CLKOUTEN_ON                      000037FF
+_CONFIG1                          00008007
+_CONFIG2                          00008008
+_CP_OFF                           00003FFF
+_CP_ON                            00003F7F
+_DEVID1                           00008006
+_FOSC_ECH                         00003FFF
+_FOSC_ECL                         00003FFD
+_FOSC_ECM                         00003FFE
+_FOSC_INTOSC                      00003FFC
+_IDLOC0                           00008000
+_IDLOC1                           00008001
+_IDLOC2                           00008002
+_IDLOC3                           00008003
+_LPBOREN_OFF                      00003FFF
+_LPBOREN_ON                       000037FF
+_LVP_OFF                          00001FFF
+MPASM 5.65                   ANALOGUEPPM.ASM   12-23-2017  17:06:10         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FBF
+_MCLRE_ON                         00003FFF
+_PLLEN_OFF                        00003EFF
+_PLLEN_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FDF
+_STVREN_OFF                       00003DFF
+_STVREN_ON                        00003FFF
+_WDTE_NSLEEP                      00003FF7
+_WDTE_OFF                         00003FE7
+_WDTE_ON                          00003FFF
+_WDTE_SWDTEN                      00003FEF
+_WRT_ALL                          00003FFC
+_WRT_BOOT                         00003FFE
+_WRT_HALF                         00003FFD
+_WRT_OFF                          00003FFF
+__12F1572                         00000001
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     5 reported,     0 suppressed
+
+

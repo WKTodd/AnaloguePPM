@@ -1,0 +1,119 @@
+MPLINK 5.08, LINKER
+Linker Map File - Created Sat Dec 23 17:06:11 2017
+
+                                 Section Info
+                  Section       Type    Address   Location Size(Bytes)
+                ---------  ---------  ---------  ---------  ---------
+                   .org_0       code   0x000000    program   0x000002
+                   .cinit    romdata   0x000001    program   0x000004
+                   .org_1       code   0x000004    program   0x000414
+.config_8007_BUILD/DEFAULT/PRODUCTION/ANALOGU       code   0x008007    program   0x000002
+.config_8008_BUILD/DEFAULT/PRODUCTION/ANALOGU       code   0x008008    program   0x000002
+
+
+
+                              Program Memory Usage 
+                               Start         End      
+                           ---------   ---------      
+                            0x000000    0x000002      
+                            0x000004    0x00020d      
+                            0x008007    0x008008      
+            527 out of 2055 program addresses used, program memory utilization is 25%
+
+
+
+                              Symbols - Sorted by Name
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+                   ANVTAB   0x000015    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     BCLP   0x000135    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                CENTREDOT   0x0000d9    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  CONVBAR   0x00009c    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    DOFRM   0x000112    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   DOMODE   0x00008f    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   EVNFRM   0x000123    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  GRDTABH   0x00003d    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  GRDTABL   0x000029    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   INDBAR   0x0000a5    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 INIPAB29   0x00014c    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   INTXIT   0x00000e    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   INVBAR   0x0000af    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     MAIN   0x000051    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   MAINLP   0x00006a    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                OPGRD17LP   0x0001fa    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+               OPGRD810LP   0x000204    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 OPPA29LP   0x0001ef    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                OPPAB01LP   0x0001e6    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 OPPB29LP   0x0001dc    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PAB29LP   0x000147    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PEAKBAR   0x0000e4    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PKRIGHT   0x0000fd    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    PKRND   0x0000ed    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     RAMP   0x000081    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   RAMPDN   0x00008a    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 RANDOM16   0x000076    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    SETAB   0x000140    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SETAVAL   0x0001d3    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SETGRID   0x0001cb    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB0A   0x000180    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB0B   0x0001b2    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB1A   0x000167    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB1B   0x000199    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB29   0x000144    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETTIMER   0x00010e    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     SHFT   0x00012d    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SHFTOUT   0x0001d7    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                SIMPLEDOT   0x0000cf    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   TRDPOS   0x0000c8    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 TRENDBAR   0x0000ba    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   TSTODD   0x00012f    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+
+
+
+                              Symbols - Sorted by Address
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+                   INTXIT   0x00000e    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   ANVTAB   0x000015    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  GRDTABL   0x000029    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  GRDTABH   0x00003d    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     MAIN   0x000051    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   MAINLP   0x00006a    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 RANDOM16   0x000076    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     RAMP   0x000081    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   RAMPDN   0x00008a    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   DOMODE   0x00008f    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  CONVBAR   0x00009c    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   INDBAR   0x0000a5    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   INVBAR   0x0000af    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 TRENDBAR   0x0000ba    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   TRDPOS   0x0000c8    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                SIMPLEDOT   0x0000cf    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                CENTREDOT   0x0000d9    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PEAKBAR   0x0000e4    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    PKRND   0x0000ed    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PKRIGHT   0x0000fd    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETTIMER   0x00010e    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    DOFRM   0x000112    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   EVNFRM   0x000123    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     SHFT   0x00012d    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                   TSTODD   0x00012f    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                     BCLP   0x000135    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                    SETAB   0x000140    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB29   0x000144    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  PAB29LP   0x000147    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 INIPAB29   0x00014c    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB1A   0x000167    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB0A   0x000180    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB1B   0x000199    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 SETPAB0B   0x0001b2    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SETGRID   0x0001cb    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SETAVAL   0x0001d3    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                  SHFTOUT   0x0001d7    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 OPPB29LP   0x0001dc    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                OPPAB01LP   0x0001e6    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                 OPPA29LP   0x0001ef    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+                OPGRD17LP   0x0001fa    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+               OPGRD810LP   0x000204    program     static D:\Asm\Pic\MP Projects\VFD Driver\VFD driver.X\analogVFD.X\AnaloguePPM.asm
+
+

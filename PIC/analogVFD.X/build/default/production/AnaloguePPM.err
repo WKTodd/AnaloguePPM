@@ -1,0 +1,5 @@
+Message[312] D:\ASM\PIC\MP PROJECTS\VFD DRIVER\VFD DRIVER.X\ANALOGVFD.X\ANALOGUEPPM.ASM 138 : Page or Bank selection not needed for this device.  No code generated.
+Message[302] D:\ASM\PIC\MP PROJECTS\VFD DRIVER\VFD DRIVER.X\ANALOGVFD.X\ANALOGUEPPM.ASM 244 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] D:\ASM\PIC\MP PROJECTS\VFD DRIVER\VFD DRIVER.X\ANALOGVFD.X\ANALOGUEPPM.ASM 246 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] D:\ASM\PIC\MP PROJECTS\VFD DRIVER\VFD DRIVER.X\ANALOGVFD.X\ANALOGUEPPM.ASM 252 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[312] D:\ASM\PIC\MP PROJECTS\VFD DRIVER\VFD DRIVER.X\ANALOGVFD.X\ANALOGUEPPM.ASM 260 : Page or Bank selection not needed for this device.  No code generated.
